@@ -1,0 +1,272 @@
+// RfqDetail.scss - Professional styling for RFQ Details page
+// Consistent typography and clean design
+
+// Variables
+$primary-color: #009efb;
+$primary-dark: #0084d6;
+$text-dark: #2d3748;
+$text-muted: #6c757d;
+$text-light: #4a5568;
+$border-color: #e3e6f0;
+$bg-light: #f8f9fa;
+$success-color: #28a745;
+$warning-color: #f57c00;
+
+// Typography scale - consistent font sizes
+$font-size-xs: 0.75rem;    // 12px
+$font-size-sm: 0.8125rem;  // 13px
+$font-size-base: 0.875rem; // 14px
+$font-size-lg: 1rem;       // 16px
+$font-size-xl: 1.125rem;   // 18px
+
+// ============================================
+// PAGE CONTAINER
+// ============================================
+
+.rfq-detail-page {
+  padding: 1rem 0;
+  background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+  min-height: calc(100vh - 120px);
+}
+
+// ============================================
+// HEADER BAR
+// ============================================
+
+.rfq-header-bar {
+  background: linear-gradient(135deg, $primary-color 0%, $primary-dark 100%);
+  border-radius: 10px;
+  color: white;
+  box-shadow: 0 4px 15px rgba(0, 158, 251, 0.2);
+  padding: 12px 16px;
+  margin-bottom: 16px;
+
+  .rfq-title {
+    font-weight: 700;
+    font-size: $font-size-xl;
+    margin: 0;
+  }
+
+  .header-stat {
+    text-align: center;
+
+    .stat-label {
+      font-size: $font-size-xs;
+      opacity: 0.85;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 2px;
+    }
+
+    .stat-value {
+      font-weight: 600;
+      font-size: $font-size-sm;
+    }
+
+    .stat-value-highlight {
+      font-weight: 600;
+      font-size: $font-size-sm;
+      color: #ffeb3b;
+    }
+  }
+
+  .clone-btn {
+    font-size: $font-size-xs;
+    padding: 4px 10px;
+    font-weight: 500;
+    border-radius: 4px;
+  }
+}
+
+// ============================================
+// INFO CARD
+// ============================================
+
+.rfq-info-card {
+  border-radius: 12px;
+  border: 1px solid $border-color;
+  box-shadow: 0 4px 20px rgba(0, 158, 251, 0.08);
+  margin-bottom: 16px;
+
+  .card-body {
+    padding: 20px;
+  }
+}
+
+// ============================================
+// FIELD LABELS & VALUES
+// ============================================
+
+.field-label {
+  font-size: $font-size-xs;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: $text-muted;
+  margin-bottom: 4px;
+}
+
+.field-value {
+  font-size: $font-size-sm;
+  font-weight: 600;
+  color: $text-dark;
+}
+
+.field-value-success {
+  font-size: $font-size-sm;
+  font-weight: 600;
+  color: $success-color;
+}
+
+.field-subtext {
+  font-size: $font-size-xs;
+  color: $text-muted;
+}
+
+// ============================================
+// TEXT BOX (Objective/Requirements)
+// ============================================
+
+.text-box {
+  font-size: $font-size-sm;
+  font-weight: 500;
+  color: $text-light;
+  line-height: 1.5;
+  padding: 12px;
+  background-color: $bg-light;
+  border-radius: 6px;
+  border: 1px solid #e9ecef;
+  max-height: 100px;
+  overflow-y: auto;
+}
+
+// ============================================
+// METADATA ROW
+// ============================================
+
+.metadata-row {
+  font-size: $font-size-xs;
+  line-height: 1.4;
+
+  .metadata-label {
+    font-weight: 600;
+    color: $text-muted;
+    display: inline-block;
+    min-width: 95px;
+  }
+
+  .metadata-value {
+    font-weight: 600;
+    color: $text-dark;
+  }
+}
+
+// ============================================
+// SIGNOFF ALERT
+// ============================================
+
+.signoff-alert {
+  background-color: #fff8e1;
+  border-radius: 8px;
+  border: 1px solid #ffb74d;
+  padding: 12px 16px;
+  margin-top: 12px;
+
+  .signoff-label {
+    font-size: $font-size-xs;
+    font-weight: 600;
+    color: $text-muted;
+    margin-bottom: 4px;
+  }
+
+  .signoff-value {
+    font-weight: 600;
+    color: $warning-color;
+    font-size: $font-size-sm;
+  }
+}
+
+// ============================================
+// TABLES
+// ============================================
+
+.rfq-table {
+  margin-bottom: 0;
+
+  thead {
+    tr {
+      background-color: $primary-color;
+    }
+
+    th {
+      color: white;
+      font-weight: 600;
+      font-size: $font-size-xs;
+      padding: 10px 12px;
+      border: none;
+    }
+  }
+
+  tbody {
+    td {
+      font-size: $font-size-sm;
+      padding: 10px 12px;
+      vertical-align: middle;
+    }
+  }
+}
+
+// ============================================
+// SECTION HEADERS
+// ============================================
+
+.section-header {
+  font-size: $font-size-base;
+  font-weight: 600;
+  color: $text-dark;
+  margin-bottom: 8px;
+}
+
+// ============================================
+// ACTION BUTTONS
+// ============================================
+
+.action-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+// ============================================
+// APPROVERS MODAL
+// ============================================
+
+.approver-card {
+  background-color: $bg-light;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 12px;
+
+  .approver-name {
+    font-weight: 600;
+    font-size: $font-size-sm;
+    color: $text-dark;
+  }
+
+  .approver-email {
+    font-size: $font-size-xs;
+    color: $text-muted;
+  }
+
+  .approver-note {
+    font-size: $font-size-xs;
+    color: $text-muted;
+  }
+
+  .approver-date {
+    font-size: $font-size-xs;
+    color: $text-muted;
+    margin-top: 4px;
+  }
+}

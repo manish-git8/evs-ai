@@ -1,0 +1,14 @@
+.steamline {
+    .sl-left {
+        margin-left: -20px;
+    }
+}
+
+.rtl {
+    .steamline {
+        .sl-left {
+            margin-left: 0 !important;
+            margin-right: -20px;
+        }
+    }
+}

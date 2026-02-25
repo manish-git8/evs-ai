@@ -1,0 +1,45 @@
+@import "variables";
+@import "simplebar/dist/simplebar.min.css";
+@import "~bootstrap/scss/bootstrap";
+@import "~bootstrap-icons/font/bootstrap-icons.scss";
+@import "./layout/sidebar";
+@import "./layout/container";
+@import "./layout/customizer";
+@import "./layout/horizontal";
+@import "./layout/topbar";
+@import "./layout/rtl/rtl";
+
+
+/* Change placeholder color to light grey */
+input::-webkit-input-placeholder {
+    color: rgb(178, 178, 178) !important;
+}
+
+input:-moz-placeholder { /* Firefox 18- */
+    color: rgb(178, 178, 178) !important;
+}
+
+input::-moz-placeholder {  /* Firefox 19+ */
+    color: rgb(178, 178, 178) !important;
+}
+
+input:-ms-input-placeholder {  
+    color: rgb(178, 178, 178) !important;
+}
+
+/* Hide placeholder when input is focused */
+input:focus::-webkit-input-placeholder {
+    color: transparent !important;
+}
+
+input:focus:-moz-placeholder { /* Firefox 18- */
+    color: transparent !important;
+}
+
+input:focus::-moz-placeholder {  /* Firefox 19+ */
+    color: transparent !important;
+}
+
+input:focus:-ms-input-placeholder {  
+    color: transparent !important;
+}

@@ -1,0 +1,53 @@
+.table-responsive th {
+  background: #009efb;
+  color: white;
+  font-size: 13px;
+  font-weight: bold;
+  border: none;
+  padding: 4px 10px;
+  text-align: left;
+  min-width: 111px;
+  max-width: 111px;
+}
+
+.table-bordered > :not(caption) > * {
+  border-width: var(--bs-border-width) 0;
+  height: 34px;
+}
+
+.btn-danger {
+  font-size: 11px;
+}
+
+.table-responsive td {
+  white-space: nowrap;
+  overflow: hidden;
+  overflow-x: hidden;
+  text-overflow: ellipsis;
+  min-width: 111px;
+  max-width: 111px;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: #333;
+  border: none;
+  transition: all 0.3s ease-in-out;
+  vertical-align: -webkit-baseline-middle;
+}
+
+.form-label {
+  font-size: 13px;
+}
+
+[title]:hover:after {
+  display: none !important;
+}
+
+input:hover::-webkit-validation-bubble-message,
+select:hover::-webkit-validation-bubble-message {
+  display: none;
+}
+
+input:invalid,
+select:invalid {
+  box-shadow: none;
+}

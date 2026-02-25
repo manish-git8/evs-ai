@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RFQ PDF Generation</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <style>
+      body {
+        font-family: 'Arial', sans-serif;
+        margin: 40px;
+        background-color: #f4f7fc;
+        color: #333;
+      }
+      #container {
+        background: #ffffff;
+        padding: 30px;
+        border-radius: 10px;
+        box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
+        max-width: 900px;
+        margin: auto;
+      }
+      h1 {
+        color: #009efb;
+        text-align: center;
+        margin-bottom: 10px;
+      }
+      h2 {
+        color: #009efb;
+        border-bottom: 3px solid #009efb;
+        padding-bottom: 5px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 20px 0;
+        background: #fff;
+      }
+      table,
+      th,
+      td {
+        border: 1px solid #ddd;
+      }
+      th {
+        background: #009efb;
+        color: white;
+        padding: 12px;
+        text-align: left;
+      }
+      td {
+        padding: 10px;
+      }
+      #info p {
+        margin: 5px 0;
+        font-size: 16px;
+      }
+      #info strong {
+        color: #009efb;
+      }
+      #companyLogo {
+        display: block;
+        margin: 10px auto;
+      }
+      #download {
+        display: block;
+        background: #28a745;
+        color: white;
+        padding: 12px 20px;
+        border: none;
+        font-size: 18px;
+        font-weight: bold;
+        margin: 20px auto;
+        text-align: center;
+        border-radius: 5px;
+        cursor: pointer;
+        width: 100%;
+        max-width: 300px;
+        box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.2);
+        transition: 0.3s;
+      }
+      #download:hover {
+        background: #218838;
+      }
+      .note {
+        background: #fff3cd;
+        padding: 10px;
+        border-left: 4px solid #ffc107;
+        margin: 15px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="container">
+      <img id="companyLogo" th:src="${companyLogoImageUrl}" alt="Company Logo" />
+      <h1>Request for Quotation (RFQ)</h1>
+
+      <div id="content">
+        <div id="info">
+          <p><strong>RFQ #:</strong> RFQ-20250101</p>
+          <p><strong>Date:</strong> January 3, 2025</p>
+          <p><strong>Company Name:</strong> ABC Corp</p>
+          <p><strong>Contact Person:</strong> John Doe</p>
+          <p>
+            <strong>Contact Email:</strong>
+            <a href="mailto:john.doe@abccorp.com" style="color: #004aad; text-decoration: none"
+              >john.doe@abccorp.com</a
+            >
+          </p>
+          <p><strong>Contact Phone:</strong> +1-123-456-7890</p>
+          <p><strong>Deadline for Submission:</strong> January 15, 2025</p>
+        </div>
+
+        <h2>Requested Items</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Item Description</th>
+              <th>Quantity</th>
+              <th>Unit</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>1</td>
+              <td>Office Chairs</td>
+              <td>50</td>
+              <td>Pcs</td>
+            </tr>
+            <tr>
+              <td>2</td>
+              <td>Laptop Computers</td>
+              <td>20</td>
+              <td>Pcs</td>
+            </tr>
+            <tr>
+              <td>3</td>
+              <td>Air Conditioners</td>
+              <td>5</td>
+              <td>Pcs</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h2>Terms and Conditions</h2>
+        <p>
+          All items must be delivered within 30 days of contract signing. Payment terms are net 30
+          days from the date of invoice.
+        </p>
+
+        <h2>Additional Notes</h2>
+        <div class="note">
+          <p>
+            Please include warranty details and after-sales service information in your quotation.
+          </p>
+        </div>
+
+        <p>
+          Thank you for your response. Please contact John Doe at
+          <a href="mailto:john.doe@abccorp.com" style="color: #004aad; text-decoration: none"
+            >john.doe@abccorp.com</a
+          >
+          for any questions regarding this RFQ.
+        </p>
+      </div>
+
+      <button id="download">Download PDF</button>
+    </div>
+
+    <script>
+      document.getElementById('download').addEventListener('click', function () {
+        const element = document.getElementById('container');
+        html2pdf().from(element).save('RFQ.pdf');
+      });
+    </script>
+  </body>
+</html>

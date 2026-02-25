@@ -1,0 +1,9 @@
+rfq cart status           -> entity=rfq     action=status
+po cart status            -> entity=po      action=status
+cart status               -> entity=cart    action=status
+rfq status                -> entity=rfq     action=status
+po status                 -> entity=po      action=status
+show rfq carts            -> entity=rfq     action=status
+show po carts             -> entity=cart    action=navigate
+show my carts             -> entity=cart    action=status
+DONE

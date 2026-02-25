@@ -1,0 +1,27 @@
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+/* EVS Logo White Glow Effect */
+.evs-logo-glow {
+  filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.8)) 
+          drop-shadow(0 0 16px rgba(255, 255, 255, 0.6)) 
+          drop-shadow(0 0 24px rgba(255, 255, 255, 0.4));
+  transition: filter 0.3s ease;
+}
+
+.evs-logo-glow:hover {
+  filter: drop-shadow(0 0 12px rgba(255, 255, 255, 1)) 
+          drop-shadow(0 0 20px rgba(255, 255, 255, 0.8)) 
+          drop-shadow(0 0 32px rgba(255, 255, 255, 0.6));
+}

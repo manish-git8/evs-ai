@@ -1,0 +1,404 @@
+{
+  "metadata": {
+    "version": "4.0",
+    "style": "button_based_interactive"
+  },
+  "button_responses": {
+    "create_new_cart": {
+      "patterns": [
+        "create new cart",
+        "order new cart",
+        "add to cart",
+        "cart creation",
+        "new cart",
+        "create a purchase order",
+        "new purchase order",
+        "make a cart",
+        "i want to order",
+        "place an order",
+        "buy something",
+        "start a cart",
+        "make new cart",
+        "create cart",
+        "make a purchase order"
+      ],
+      "response": "To Create new cart, please follow these steps:\n\n1. Select the user on behalf of whom the cart is created\n2. Select purchase type\n3. Choose the date you need it by\n4. Click submit\n5. Fill in the Shipping details and the account details\n6. Add products to cart\n7. Submit cart for approval\n\nOnce the cart is approved PO will be generated!",
+      "action_button": {
+        "text": "\uD83D\uDED2 Create New Cart",
+        "url": ""
+      }
+    },
+    "approve_cart": {
+      "patterns": [
+        "approve cart",
+        "approve procurement cart",
+        "cart approval",
+        "pending carts",
+        "carts for approval",
+        "my pending approvals",
+        "pending approvals",
+        "what needs my approval",
+        "approve my cart",
+        "approve a cart",
+        "show pending approvals"
+      ],
+      "response": "I'll show you the list of carts pending for your approval.",
+      "action_button": null
+    },
+    "reject_cart": {
+      "patterns": [
+        "reject cart",
+        "reject procurement cart",
+        "decline cart",
+        "deny cart",
+        "refuse cart",
+        "cart rejection",
+        "reject a cart",
+        "decline a cart",
+        "deny a cart"
+      ],
+      "response": "I'll show you the list of carts you can reject.",
+      "action_button": null
+    },
+    "cart_status": {
+      "patterns": [
+        "cart status",
+        "my cart",
+        "procurement cart",
+        "cart items",
+        "view cart",
+        "what's my cart status",
+        "check my cart",
+        "show my carts",
+        "see my cart",
+        "open cart",
+        "cart details",
+        "what's in my cart"
+      ],
+      "response": "I'll show you the list of your most recent carts.",
+      "action_button": null
+    },
+    "check_inventory": {
+      "patterns": [
+        "check inventory",
+        "check stock",
+        "is it available",
+        "is it in stock",
+        "stock check",
+        "inventory check",
+        "what's available",
+        "do you have",
+        "availability check",
+        "item availability"
+      ],
+      "response": "Sure, I can check inventory for you. What items would you like me to check?",
+      "action_button": null
+    },
+    "submit_cart": {
+      "patterns": [
+        "submit cart",
+        "send cart for approval",
+        "submit for approval",
+        "checkout",
+        "check out",
+        "finalize cart",
+        "finish order",
+        "complete cart",
+        "send for review",
+        "submit order",
+        "finalize order",
+        "send cart"
+      ],
+      "response": "I can submit your cart for approval. Which cart would you like to submit? Please provide the cart ID or number.",
+      "action_button": null
+    },
+    "duplicate_cart": {
+      "patterns": [
+        "duplicate cart",
+        "copy cart",
+        "clone cart",
+        "repeat order",
+        "reorder",
+        "order again",
+        "same order again",
+        "copy my last cart",
+        "duplicate my cart",
+        "repeat my order"
+      ],
+      "response": "I can duplicate a cart for you. Which cart would you like to duplicate? Please provide the cart ID or number.",
+      "action_button": null
+    },
+    "delete_cart": {
+      "patterns": [
+        "delete cart",
+        "remove cart",
+        "cancel cart",
+        "discard cart",
+        "drop cart",
+        "throw away cart",
+        "cancel my cart",
+        "delete my cart",
+        "remove my cart"
+      ],
+      "response": "I can delete a cart for you. Which cart would you like to delete? Please provide the cart ID or number.",
+      "action_button": null
+    },
+    "update_cart_item": {
+      "patterns": [
+        "update quantity",
+        "change quantity",
+        "change amount",
+        "edit item",
+        "modify item",
+        "update item",
+        "change item quantity",
+        "adjust quantity",
+        "increase quantity",
+        "decrease quantity",
+        "set quantity"
+      ],
+      "response": "I can update item quantities in your cart. Which cart and item would you like to update?",
+      "action_button": null
+    },
+    "remove_cart_item": {
+      "patterns": [
+        "remove item",
+        "delete item",
+        "take out item",
+        "remove from cart",
+        "delete from cart",
+        "drop item",
+        "remove item from cart",
+        "take item out"
+      ],
+      "response": "I can remove an item from your cart. Which cart and item would you like to remove?",
+      "action_button": null
+    },
+    "po_status": {
+      "patterns": [
+        "purchase order status",
+        "po status",
+        "track my order",
+        "where is my order",
+        "order tracking",
+        "check po",
+        "show purchase orders",
+        "my purchase orders",
+        "list purchase orders",
+        "list pos",
+        "order status",
+        "what happened to my order",
+        "show my pos",
+        "show my orders",
+        "view purchase orders"
+      ],
+      "response": "I'll check your purchase order status for you.",
+      "action_button": null
+    },
+    "po_details": {
+      "patterns": [
+        "po details",
+        "purchase order details",
+        "order details",
+        "show po items",
+        "po items",
+        "what's in my po",
+        "purchase order items",
+        "po item details",
+        "order item details"
+      ],
+      "response": "I'll get the details of your purchase order. Please provide the PO number or ID.",
+      "action_button": null
+    },
+    "supplier_lookup": {
+      "patterns": [
+        "find supplier",
+        "search supplier",
+        "look up supplier",
+        "who supplies",
+        "list suppliers",
+        "show suppliers",
+        "supplier info",
+        "supplier details",
+        "which supplier",
+        "who can supply",
+        "supplier search",
+        "find a supplier"
+      ],
+      "response": "I can look up supplier information for you. What supplier are you looking for?",
+      "action_button": null
+    },
+    "invoice_status": {
+      "patterns": [
+        "check invoice",
+        "invoice status",
+        "show invoices",
+        "my invoices",
+        "list invoices",
+        "pending invoices",
+        "invoice details",
+        "any new invoices",
+        "unpaid invoices",
+        "view invoices",
+        "invoice list"
+      ],
+      "response": "I'll check your invoices for you.",
+      "action_button": null
+    },
+    "grn_status": {
+      "patterns": [
+        "receipt status",
+        "grn status",
+        "goods received",
+        "delivery status",
+        "did we receive",
+        "shipment received",
+        "check receipt",
+        "receiving status",
+        "show grn",
+        "goods receipt",
+        "check delivery",
+        "grn details"
+      ],
+      "response": "I'll check the goods receipt status for you.",
+      "action_button": null
+    },
+    "budget_status": {
+      "patterns": [
+        "check budget",
+        "budget status",
+        "how much budget",
+        "remaining budget",
+        "budget utilization",
+        "budget left",
+        "show budget",
+        "budget dashboard",
+        "spending so far",
+        "budget overview",
+        "my budget",
+        "available budget"
+      ],
+      "response": "I'll check your budget status for you.",
+      "action_button": null
+    },
+    "rfq_status": {
+      "patterns": [
+        "check rfq",
+        "rfq status",
+        "list rfqs",
+        "my rfqs",
+        "show rfqs",
+        "request for quote",
+        "quotation status",
+        "pending quotes",
+        "rfq details",
+        "request for quotation",
+        "show my rfqs",
+        "view rfqs"
+      ],
+      "response": "I'll check your RFQ status for you.",
+      "action_button": null
+    },
+    "product_details": {
+      "patterns": [
+        "product details",
+        "tell me about",
+        "what is the price of",
+        "how much does it cost",
+        "product info",
+        "show product",
+        "product specifications",
+        "product specs",
+        "item details",
+        "item info"
+      ],
+      "response": "I can look up product details for you. What product are you interested in?",
+      "action_button": null
+    },
+    "all_carts": {
+      "patterns": [
+        "show all carts",
+        "list all carts",
+        "all my carts",
+        "view all carts",
+        "all carts",
+        "every cart",
+        "cart list",
+        "show carts",
+        "list carts",
+        "my carts list"
+      ],
+      "response": "I'll show you all your carts.",
+      "action_button": null
+    },
+    "order_history": {
+      "patterns": [
+        "order history",
+        "past orders",
+        "previous orders",
+        "completed orders",
+        "what did i order before",
+        "show history",
+        "my order history",
+        "recent orders",
+        "old orders",
+        "finished orders"
+      ],
+      "response": "I'll show you your order history.",
+      "action_button": null
+    }
+  },
+  "id_based_queries": {},
+  "general": {
+    "greeting": {
+      "patterns": [
+        "hi",
+        "hello",
+        "hey",
+        "good morning",
+        "good afternoon",
+        "good evening"
+      ],
+      "response": "Hello! \uD83D\uDC4B There! I am EVSProcure Support Bot How can I help you today?"
+    },
+    "voice_greeting": {
+      "patterns": [
+        "hey evs",
+        "hey e v s",
+        "hey e.v.s",
+        "hello evs",
+        "hi evs"
+      ],
+      "response": "Hello! I'm EVS Assistant. I'm ready to help with procurement tasks. What would you like to do?"
+    },
+    "voice_end_session": {
+      "patterns": [
+        "stop listening",
+        "goodbye",
+        "that's all",
+        "bye",
+        "stop",
+        "end session",
+        "i'm done",
+        "nothing else",
+        "no thanks"
+      ],
+      "response": "Goodbye! EVS Assistant signing off. Say Hey EVS to start again."
+    },
+    "help": {
+      "patterns": [
+        "help",
+        "what can you do",
+        "features",
+        "support"
+      ],
+      "response": "I can help you with:\n\n\uD83D\uDED2 Create New Cart - Create a new procurement cart\n\uD83D\uDED2 Cart Status - Check the status of your existing cart\n\u2705 Approve Cart - Approve pending procurement carts\n\u274C Reject Cart - Reject procurement carts\n\uD83D\uDCE6 Check Inventory - Check item availability\n\uD83D\uDCE4 Submit Cart - Submit cart for approval\n\uD83D\uDD04 Duplicate Cart - Copy an existing cart\n\uD83D\uDDD1\uFE0F Delete Cart - Remove a draft cart\n\uD83D\uDCCB PO Status - Track purchase orders\n\uD83C\uDFED Supplier Lookup - Search suppliers\n\uD83D\uDCB0 Invoice Status - Check invoices\n\uD83D\uDCE5 GRN Status - Check goods receipts\n\uD83D\uDCCA Budget Status - Check budget utilization\n\uD83D\uDCDD RFQ Status - Check request for quotes\n\uD83D\uDCC3 Order History - View past orders\n\nJust select any option from the buttons above or type your question!"
+    },
+    "fallback": {
+      "patterns": [
+        ".*"
+      ],
+      "response": "I can't find a direct solution for your query. You can raise a ticket and our team will resolve it within 24 hours."
+    }
+  }
+}

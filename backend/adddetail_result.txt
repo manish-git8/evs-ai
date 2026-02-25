@@ -1,0 +1,6 @@
+﻿=== STEP 1: Login ===
+Login status: 400
+Login failed. Response: {}
+Retry status: 500
+COULD NOT LOGIN. Keys: []
+Full: {}

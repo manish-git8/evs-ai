@@ -1,0 +1,16 @@
+.round-overlap {
+    position: absolute;
+    width: 150px;
+    height: 150px;
+    left: 0;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    margin: 0 auto;
+    border: 2px solid #e9ecef;
+    border-radius: 100%;
+    font-size: 35px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}

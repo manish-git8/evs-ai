@@ -1,0 +1,123 @@
+{
+  "metadata": {
+    "version": "3.0",
+    "style": "button_based_interactive"
+  },
+
+  "button_responses": {
+    "add_new_user": {
+      "patterns": ["add new user", "create user", "register user", "new user", "user registration", "buyer registration", "add new buyer", "add new company admin", "add new receiver", "create company admin", "create buyer", "create receiver", "create account payable", "add account payable"],
+      "response": "To add a new user, please follow these steps:\n\n1. Select the user role\n2. Fill in user details\n3. Upload user image\n4. Click submit\n\nUser will be added successfully!.",
+      "action_button": {
+        "text": "➕ Add New User",
+        "url": "https://demo.evsprocure.com/user-registration/"
+      }
+    },
+
+    "create_new_cart": {
+      "patterns": ["create new cart", "order new cart", "add to cart", "cart creation", "new cart"],
+      "response": "To Create new cart, please follow these steps:\n\n1. Select the user on behalf of whom the cart is created\n2. Select purchase type\n3. Choose the date you need it by\n4. Click submit\n5. Fill in the Shipping details and the account details\n6. Add products to cart\n7. Submit cart for approval\n\nOnce the cart is approved PO will be generated!",
+      "action_button": {
+        "text": "\uD83D\uDED2 Create New Cart",
+        "url": ""
+      }
+    },
+
+    "update_user": {
+      "patterns": ["update user", "edit user", "modify user", "change user details", "update buyer", "update account payable", "update company admin", "update receiver"],
+      "response": "To update user details, please tap the button below: \n\n1. You will be redirected to the user management page\n2. Select the user you want to edit\n3. Click on the edit button and edit the user\n4. Click on update button\n\nUser will be updated successfully!",
+      "action_button": {
+        "text": "✏️ Update User",
+        "url": "https://demo.evsprocure.com/user-management"
+      }
+    },
+
+    "add_approval_policy": {
+      "patterns": ["add approval policy", "new approval policy", "create approval rule", "approval workflow"],
+      "response": "To add a new approval policy:\n\n1. Select approval policy type\n2. Set approval rules\n3. Assign approvers\n4. Assign default approvers\n5. Click on the Create Policy button\n\nTap the button below to get started:",
+      "action_button": {
+        "text": "⚙️ Create Approval Policy",
+        "url": "https://demo.evsprocure.com/approval?type=indent"
+      }
+    },
+
+    "add_new_project": {
+      "patterns": ["add new project", "create project", "new project", "project setup"],
+      "response": "To add a new project:\n\n1. Enter project name\n2. Enter project note\n3. Assign project manager\n4. Enter Project Description\n\nTap the button below to create a new project:",
+      "action_button": {
+        "text": "🏗️ Create New Project",
+        "url": "https://demo.evsprocure.com/project-registration"
+      }
+    },
+
+    "check_budget": {
+      "patterns": ["check budget", "budget status", "available budget", "budget balance"],
+      "response": "To check budget, please tap the button below:",
+      "action_button": {
+        "text": "📊 Check Budget",
+        "url": "https://demo.evsprocure.com/budget-dashboard"
+      }
+    },
+
+    "check_subscription": {
+      "patterns": ["check subscription", "current plan", "plan", "plans", "Plan Offers"],
+      "response": "Please tap the button below to see plan details:",
+      "action_button": {
+        "text": "📊 Check Budget",
+        "url": "https://demo.evsprocure.com/budget-dashboard"
+      }
+    },
+
+    "gl_account": {
+      "patterns": ["gl account", "general ledger", "account code", "gl code"],
+      "response": "To check GL account details, please tap the button below:",
+      "action_button": {
+        "text": "📋 View GL Accounts",
+        "url": "https://demo.evsprocure.com/gl-account-management"
+      }
+    }
+  },
+
+  "id_based_queries": {
+    "cart_status": {
+      "patterns": ["cart status", "my cart", "procurement cart", "cart items", "view cart"],
+      "initial_response": "To check your cart status, I need your Cart ID. Please provide it below:",
+      "id_label": "Cart ID",
+      "id_placeholder": "Enter Cart ID",
+      "id_received_response": "Thank you! I've received your Cart ID: {id}\n\nYour cart information:",
+      "action_button": {
+        "text": "🛒 View Cart",
+        "url": "#/procurement/cart/{id}"
+      }
+    },
+
+    "po": {
+      "patterns": ["po", "purchase order", "order status", "track order", "po number"],
+      "initial_response": "To help you with your purchase order, I need your PO ID. Please provide it below:",
+      "id_label": "PO ID",
+      "id_placeholder": "Enter PO ID",
+      "id_received_response": "Thank you! I've received your PO ID: {id}\n\nPurchase Order Information:",
+      "action_button": {
+        "text": "📦 View PO Details",
+        "url": "#/procurement/po/{id}"
+      }
+    }
+  },
+
+  "general": {
+    "greeting": {
+      "patterns": ["hi", "hello", "hey", "good morning", "good afternoon", "good evening"],
+      "response": "Hello! 👋 There! I am EVSProcure Support Bot How can I help you today?"
+    },
+
+    "help": {
+      "patterns": ["help", "what can you do", "features", "support"],
+      "response": "I can help you with:\n\n👥 User Management (Add/Update users)\n🛒 Procurement (GRN, Cart Status, PO)\n📊 Account Management (Projects, Budget, GL Accounts)\n⚙️ Approval Policies\n\nJust select any option from the buttons above or type your question!"
+    },
+
+    "fallback": {
+      "patterns": [".*"],
+      "response": "I'm not sure about that. You can raise a ticket and our support team will get back to you within 24Hrs"
+    }
+  }
+}

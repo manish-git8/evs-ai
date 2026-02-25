@@ -1,0 +1,19 @@
+.disabled-cart {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+
+@media (max-width: 576px) {
+  .product-card-horizontal {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .product-image img {
+    width: 100%;
+    height: auto;
+  }
+  .remove-product {
+    align-self: flex-end;
+  }
+}

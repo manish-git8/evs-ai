@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+
+# Python virtual environments
+venv*/
+backend/backend/venv312/
+__pycache__/
+*.pyc
+*.pyo
+
+# Logs
+*.log
+logs/
+
+# Environment files
+.env
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Build output
+build/
+dist/

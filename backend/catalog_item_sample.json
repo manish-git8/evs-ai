@@ -1,0 +1,14 @@
+{
+  "internalItemId": 133,
+  "companyId": 43,
+  "partId": "ITEM-43-EDUC-01028",
+  "description": "Projector",
+  "categoryId": 6,
+  "categoryName": "Education",
+  "defaultUom": "Piece",
+  "quantityPerUnit": 12,
+  "specifications": null,
+  "status": "ACTIVE",
+  "createdDate": "2026-02-09T11:16:05Z",
+  "updatedDate": "2026-02-09T11:16:34Z"
+}

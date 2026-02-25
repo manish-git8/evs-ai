@@ -1,0 +1,802 @@
+// Billing Module Styles
+
+// Common styles
+.billing-plans-container,
+.billing-dashboard-container,
+.billing-invoices-container,
+.admin-subscription-management-container {
+  padding: 0.75rem 0.5rem;
+  color: #495057 !important;
+  background-color: transparent !important;
+  font-size: 12px !important;
+
+  // Force color on all child elements
+  * {
+    color: #495057 !important;
+  }
+
+  // Preserve utility color classes
+  .text-muted {
+    color: #6c757d !important;
+  }
+
+  .text-success {
+    color: #28a745 !important;
+  }
+
+  .text-danger {
+    color: #dc3545 !important;
+  }
+
+  .text-warning {
+    color: #ffc107 !important;
+  }
+
+  .text-info {
+    color: #17a2b8 !important;
+  }
+
+  .text-primary {
+    color: #009efb !important;
+  }
+
+  // Badge color overrides - ensure proper contrast
+  .badge {
+    &.bg-success,
+    &.bg-primary,
+    &.bg-danger,
+    &.bg-warning,
+    &.bg-info,
+    &.bg-dark,
+    &.bg-secondary {
+      color: white !important;
+    }
+
+    &.bg-light {
+      color: #495057 !important;
+    }
+  }
+
+  // Button color overrides - ensure proper contrast
+  .btn {
+    // Solid color buttons should have white text
+    &.btn-primary,
+    &.btn-success,
+    &.btn-danger,
+    &.btn-warning,
+    &.btn-info,
+    &.btn-dark,
+    &.btn-secondary {
+      color: white !important;
+
+      i {
+        color: white !important;
+      }
+    }
+
+    // Outline buttons should have colored text matching their border
+    &.btn-outline-primary {
+      color: #0d6efd !important;
+
+      i {
+        color: #0d6efd !important;
+      }
+    }
+
+    &.btn-outline-success {
+      color: #28a745 !important;
+
+      i {
+        color: #28a745 !important;
+      }
+    }
+
+    &.btn-outline-danger {
+      color: #dc3545 !important;
+
+      i {
+        color: #dc3545 !important;
+      }
+    }
+
+    &.btn-outline-warning {
+      color: #ffc107 !important;
+
+      i {
+        color: #ffc107 !important;
+      }
+    }
+
+    &.btn-outline-info {
+      color: #17a2b8 !important;
+
+      i {
+        color: #17a2b8 !important;
+      }
+    }
+
+    &.btn-outline-secondary {
+      color: #6c757d !important;
+
+      i {
+        color: #6c757d !important;
+      }
+    }
+
+    // Link buttons
+    &.btn-link {
+      color: #0d6efd !important;
+
+      i {
+        color: #0d6efd !important;
+      }
+    }
+
+    // Light buttons
+    &.btn-light {
+      color: #495057 !important;
+
+      i {
+        color: #495057 !important;
+      }
+    }
+  }
+
+  h1 {
+    font-size: 14px !important;
+  }
+
+  h2 {
+    font-size: 14px !important;
+    margin-bottom: 0.25rem;
+    color: #495057 !important;
+  }
+
+  h3 {
+    font-size: 14px !important;
+  }
+
+  h4 {
+    font-size: 14px !important;
+  }
+
+  h5 {
+    font-size: 14px !important;
+  }
+
+  h6 {
+    font-size: 12px !important;
+  }
+
+  p {
+    font-size: 12px !important;
+  }
+
+  p.text-muted {
+    font-size: 12px !important;
+    margin-bottom: 0.75rem;
+    color: #6c757d !important;
+  }
+
+  span {
+    font-size: 12px !important;
+  }
+
+  label {
+    font-size: 12px !important;
+  }
+
+  .form-control,
+  .form-select,
+  input,
+  select,
+  textarea {
+    font-size: 12px !important;
+  }
+
+  button {
+    font-size: 12px !important;
+  }
+
+  .btn {
+    font-size: 12px !important;
+  }
+
+  // React-select overrides
+  .css-1dimb5e-singleValue,
+  .css-qbdosj-Input,
+  .css-1jqq78o-placeholder {
+    color: #495057 !important;
+  }
+
+  // Form control overrides
+  .form-control:disabled,
+  .form-control[readonly] {
+    background-color: #e9ecef !important;
+    color: #6c757d !important;
+  }
+
+  .row {
+    margin-bottom: 0.75rem;
+  }
+
+  // Tighter row gutters for plan cards
+  .row.gx-2 {
+    --bs-gutter-x: 0.5rem;
+  }
+
+  // Force proper colors for cards and tables
+  .card {
+    background-color: #fff !important;
+    color: #495057 !important;
+
+    * {
+      color: #495057 !important;
+    }
+
+    .text-muted {
+      color: #6c757d !important;
+    }
+
+    .text-success {
+      color: #28a745 !important;
+    }
+
+    .text-danger {
+      color: #dc3545 !important;
+    }
+
+    .text-warning {
+      color: #ffc107 !important;
+    }
+
+    .text-info {
+      color: #17a2b8 !important;
+    }
+
+    .text-primary {
+      color: #009efb !important;
+    }
+  }
+
+  .card-title {
+    color: #495057 !important;
+    font-size: 14px !important;
+  }
+
+  .card-body {
+    color: #495057 !important;
+    font-size: 12px !important;
+
+    * {
+      color: #495057 !important;
+    }
+
+    .text-muted {
+      color: #6c757d !important;
+    }
+  }
+
+  // Table text colors and sizes
+  table {
+    color: #495057 !important;
+    font-size: 12px !important;
+  }
+
+  table th,
+  table td {
+    color: #495057 !important;
+    font-size: 12px !important;
+  }
+
+  .react-bs-table {
+    color: #495057 !important;
+    font-size: 12px !important;
+  }
+
+  .react-bs-table table {
+    color: #495057 !important;
+    font-size: 12px !important;
+  }
+
+  .react-bs-table th,
+  .react-bs-table td {
+    color: #495057 !important;
+    font-size: 12px !important;
+  }
+
+  .badge {
+    font-size: 10px !important;
+  }
+
+  small {
+    font-size: 10px !important;
+  }
+}
+
+// Override for cards with colored backgrounds
+.trial-notice-card,
+.current-subscription-card {
+  * {
+    color: white !important;
+  }
+
+  h5, p {
+    color: white !important;
+  }
+
+  .text-muted {
+    color: rgba(255, 255, 255, 0.9) !important;
+  }
+}
+
+// Billing Plans Page
+.billing-cycle-selector {
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  border-radius: 6px;
+
+  .btn {
+    padding: 0.5rem 1rem;
+    font-weight: 600;
+    font-size: 0.875rem;
+    transition: all 0.3s ease;
+
+    &:hover {
+      transform: translateY(-1px);
+    }
+
+    .badge {
+      font-size: 0.65rem;
+      padding: 2px 6px;
+    }
+  }
+}
+
+.current-subscription-card {
+  background: #009efb;
+  color: white;
+  border: none;
+  box-shadow: 0 3px 10px rgba(0, 158, 251, 0.3);
+
+  .card-body {
+    padding: 0.875rem;
+  }
+
+  h5 {
+    color: white;
+    font-size: 1rem;
+    margin-bottom: 0.25rem;
+  }
+
+  p {
+    color: white;
+    font-size: 0.8rem;
+    margin-bottom: 0;
+  }
+
+  .btn-outline-primary {
+    color: white;
+    border-color: white;
+    font-size: 0.8rem;
+    padding: 0.375rem 0.75rem;
+
+    &:hover {
+      background-color: white;
+      color: #0d6efd;
+    }
+  }
+}
+
+.plan-card {
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+
+  &:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.12);
+    border-color: #0d6efd;
+  }
+
+  &.current-plan {
+    border-color: #28a745;
+    box-shadow: 0 4px 12px rgba(40, 167, 69, 0.25);
+  }
+
+  .card-body {
+    padding: 0.875rem;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+
+  .current-plan-badge {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    font-size: 0.65rem;
+    padding: 3px 8px;
+  }
+
+  .card-title {
+    font-size: 1.1rem;
+    margin-bottom: 0.4rem;
+    min-height: 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+  }
+
+  p.text-muted {
+    font-size: 0.75rem;
+    margin-bottom: 0.5rem;
+    min-height: 2.4rem;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    line-height: 1.3;
+  }
+
+  .price-container {
+    border-top: 1px solid #e0e0e0;
+    border-bottom: 1px solid #e0e0e0;
+    padding: 0.625rem 0;
+    margin: 0.5rem 0;
+
+    .price {
+      font-size: 1.65rem;
+      font-weight: 700;
+      color: #0d6efd;
+      line-height: 1.2;
+
+      .price-period {
+        font-size: 0.75rem;
+        font-weight: 400;
+        color: #6c757d;
+      }
+    }
+
+    p.text-muted.small {
+      font-size: 0.7rem;
+      color: #6c757d;
+      line-height: 1.2;
+    }
+
+    p.text-success {
+      font-size: 0.75rem;
+      margin-top: 0.375rem;
+      margin-bottom: 0;
+      line-height: 1.2;
+    }
+  }
+
+  .plan-features {
+    flex-grow: 1;
+    margin-bottom: 0.625rem;
+    min-height: 90px;
+
+    .feature-item {
+      display: flex;
+      align-items: flex-start;
+      padding: 3px 0;
+      font-size: 0.8rem;
+      line-height: 1.35;
+
+      i {
+        font-size: 0.85rem;
+        margin-top: 2px;
+        margin-right: 6px;
+        flex-shrink: 0;
+      }
+
+      span {
+        flex: 1;
+      }
+    }
+  }
+
+  .subscribe-btn {
+    font-weight: 600;
+    padding: 0.5rem;
+    font-size: 0.85rem;
+    transition: all 0.3s ease;
+    margin-top: auto;
+
+    &:hover:not(:disabled) {
+      transform: scale(1.02);
+    }
+
+    i {
+      font-size: 0.8rem;
+    }
+  }
+}
+
+// Billing Dashboard
+.trial-notice-card {
+  background: #009efb;
+  color: white;
+  border: none;
+  box-shadow: 0 3px 10px rgba(0, 158, 251, 0.3);
+
+  &.urgent {
+    background: #ffbc34;
+    box-shadow: 0 3px 10px rgba(255, 188, 52, 0.4);
+    animation: pulse 2s infinite;
+  }
+
+  h5, p {
+    color: white !important;
+  }
+
+  .text-muted {
+    color: rgba(255, 255, 255, 0.9) !important;
+  }
+
+  .badge {
+    font-size: 0.85rem;
+    padding: 8px 16px;
+    background-color: rgba(255, 255, 255, 0.25);
+    color: white;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    box-shadow: 0 3px 10px rgba(255, 188, 52, 0.4);
+  }
+  50% {
+    box-shadow: 0 4px 16px rgba(255, 188, 52, 0.6);
+  }
+}
+
+.subscription-overview-card,
+.costs-card,
+.usage-card,
+.recent-invoices-card {
+  border: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  transition: all 0.3s ease;
+
+  &:hover {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  }
+}
+
+.status-badge-lg {
+  font-size: 0.9rem;
+  padding: 8px 16px;
+}
+
+.subscription-details {
+  .detail-item {
+    display: flex;
+    align-items: flex-start;
+    padding: 12px;
+    background-color: #f8f9fa;
+    border-radius: 8px;
+
+    i {
+      font-size: 1.5rem;
+      margin-right: 12px;
+    }
+
+    small {
+      font-size: 0.75rem;
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    p {
+      font-size: 0.95rem;
+    }
+  }
+}
+
+.costs-card {
+  background: #eaf2fb;
+
+  .cost-item {
+    padding: 12px;
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  }
+}
+
+.usage-card {
+  .usage-metric {
+    padding: 16px;
+    background-color: #f8f9fa;
+    border-radius: 8px;
+
+    .progress {
+      height: 12px;
+      border-radius: 6px;
+    }
+  }
+}
+
+// Admin Subscription Management
+.admin-form-card {
+  border: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+
+  .form-group {
+    margin-bottom: 1.5rem;
+
+    label {
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+  }
+}
+
+.quick-stats-card {
+  border: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+
+  .stat-item {
+    display: flex;
+    align-items: center;
+    padding: 16px;
+    background-color: #f8f9fa;
+    border-radius: 8px;
+    transition: all 0.3s ease;
+
+    &:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+
+    .stat-icon {
+      width: 50px;
+      height: 50px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-right: 12px;
+
+      i {
+        font-size: 1.5rem;
+        color: white;
+      }
+    }
+
+    .stat-details {
+      h3 {
+        font-size: 1.8rem;
+        font-weight: 700;
+        margin-bottom: 0;
+      }
+
+      p {
+        font-size: 0.85rem;
+        margin-bottom: 0;
+      }
+    }
+  }
+}
+
+// Responsive adjustments
+@media (max-width: 768px) {
+  .billing-plans-container,
+  .billing-dashboard-container,
+  .billing-invoices-container,
+  .admin-subscription-management-container {
+    padding: 0.5rem 0.25rem;
+
+    .row.gx-2 {
+      --bs-gutter-x: 0.375rem;
+    }
+  }
+
+  .billing-cycle-selector {
+    width: 100%;
+
+    .btn {
+      flex: 1;
+      padding: 8px 10px;
+      font-size: 0.8rem;
+    }
+  }
+
+  .plan-card {
+    margin-bottom: 0.5rem;
+
+    .card-body {
+      padding: 0.75rem;
+    }
+
+    .card-title {
+      font-size: 1rem;
+      min-height: 1.75rem;
+      margin-bottom: 0.3rem;
+    }
+
+    p.text-muted {
+      font-size: 0.7rem;
+      min-height: 2.2rem;
+      margin-bottom: 0.4rem;
+    }
+
+    .price-container {
+      padding: 0.5rem 0;
+      margin: 0.4rem 0;
+
+      .price {
+        font-size: 1.5rem;
+
+        .price-period {
+          font-size: 0.7rem;
+        }
+      }
+
+      p.text-success {
+        font-size: 0.7rem;
+        margin-top: 0.3rem;
+      }
+    }
+
+    .plan-features {
+      min-height: 80px;
+      margin-bottom: 0.5rem;
+
+      .feature-item {
+        padding: 2px 0;
+        font-size: 0.75rem;
+
+        i {
+          font-size: 0.8rem;
+          margin-right: 5px;
+        }
+      }
+    }
+
+    .subscribe-btn {
+      padding: 0.4rem;
+      font-size: 0.8rem;
+    }
+  }
+
+  .subscription-details {
+    .detail-item {
+      padding: 10px;
+
+      i {
+        font-size: 1.2rem;
+      }
+    }
+  }
+
+  .stat-item {
+    margin-bottom: 12px;
+
+    .stat-icon {
+      width: 40px;
+      height: 40px;
+
+      i {
+        font-size: 1.2rem;
+      }
+    }
+
+    .stat-details {
+      h3 {
+        font-size: 1.5rem;
+      }
+    }
+  }
+}
+
+// Dark mode support removed - not applicable for this application

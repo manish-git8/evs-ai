@@ -1,0 +1,23 @@
+{
+    "loginTitle": "Login",
+    "email": "Email Address",
+    "emailPlaceholder": "Enter your email",
+    "password": "Password",
+    "passwordPlaceholder": "Enter your password",
+    "loginAs": "Login as",
+    "user": "User",
+    "supplier": "Supplier",
+    "rememberMe": "Remember me",
+    "forgotPassword": "Forgot Password?",
+    "noAccount": "Don't have an account?",
+    "registerHere": "Register here",
+    "loggingIn": "Logging in...",
+    "unexpectedError": "An unexpected error occurred",
+    "invalidEntityType": "Invalid entity type",
+    "emailRequired": "Email is required",
+    "passwordRequired": "Password is required",
+    "passwordMin": "Password must be at least 6 characters",
+    "entityTypeRequired": "Please select a login type",
+    "loginImageAlt": "Login illustration"
+  }
+  

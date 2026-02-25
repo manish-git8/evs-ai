@@ -1,0 +1,95 @@
+# EVSProcure Chatbot Backend - Python Dependencies
+#
+# ============================================================
+# GEN AI PREREQUISITES (install these FIRST, before anything else)
+# ============================================================
+#
+# 1. Install FFmpeg (required for Whisper speech-to-text):
+#    - Download from: https://www.gyan.dev/ffmpeg/builds/
+#    - Extract and add the bin folder to your system PATH
+#    - Verify:  ffmpeg -version
+#
+# 2. Install Ollama (local LLM runner):
+#    - Download from: https://ollama.com/download
+#    - Install and run the Ollama app
+#    - Verify:  ollama --version
+#
+# 3. Pull the Mistral model (used for intent/chat):
+#    ollama pull mistral
+#
+# 4. Start Ollama server (if not already running):
+#    ollama serve
+#    Ollama API will be available at: http://localhost:11434
+#
+# ============================================================
+# BACKEND - SETUP & RUN COMMANDS (use Python 3.12, NOT 3.13)
+# ============================================================
+#
+# 1. Create virtual environment (first time only):
+#    py -3.12 -m venv venv312
+#
+# 2. Activate virtual environment:
+#    .\venv312\Scripts\activate
+#
+# 3. Install dependencies:
+#    pip install --upgrade pip setuptools wheel
+#    pip install -r requirements.txt
+#
+# 4. Run the backend server (from the backend folder):
+#    .\venv312\Scripts\python.exe -m uvicorn main:app --host 0.0.0.0 --port 8000
+#
+#    Backend will be available at: http://localhost:8000
+#
+# ============================================================
+# FRONTEND - SETUP & RUN COMMANDS
+# ============================================================
+#
+# 1. Navigate to the frontend folder:
+#    cd c:\EVS\EVS\updated-ui-evsprocure-UI-develop\updated-ui-evsprocure-UI-develop
+#
+# 2. Install dependencies (first time only):
+#    npm install
+#
+# 3. Run the frontend dev server:
+#    npm start
+#
+#    Frontend will be available at: http://localhost:3000
+#
+# ============================================================
+
+# Core Framework
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+python-dotenv>=1.0.0
+
+# HTTP Client for external API calls
+httpx>=0.26.0
+
+# Rate Limiting
+slowapi>=0.1.9
+
+# Data Validation (included with FastAPI but specified for clarity)
+pydantic>=2.5.3
+email-validator>=2.1.0  # Required for EmailStr validation
+
+# Production Server
+gunicorn>=21.2.0
+
+# Standard Library Dependencies (included with Python, listed for reference)
+# - smtplib (email sending)
+# - json (JSON parsing)
+# - re (regex)
+# - base64 (encoding)
+# - uuid (unique ID generation)
+# - datetime (date/time handling)
+# - typing (type hints)
+
+# ── Open-Source AI Stack ──
+# Speech-to-Text (Whisper by OpenAI — open-source, runs locally)
+openai-whisper
+# Text-to-Speech (pyttsx3 — offline, uses system voices)
+pyttsx3==2.90
+# Audio processing
+numpy>=1.24.0
+# File upload support for audio
+python-multipart==0.0.6

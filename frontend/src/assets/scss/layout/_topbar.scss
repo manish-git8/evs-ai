@@ -1,0 +1,266 @@
+.fixedTopbar {
+  .topbar {
+    position: fixed;
+    left: $sidebarWidth;
+    width: 100%;
+    top: 0;
+    left: 0;
+    z-index: 5;
+  }
+  .HorizontalTopbar {
+    position: fixed;
+    top: 0;
+    width: 100%;
+    z-index: 1010; /* Higher than horizontal navbar (1000) */
+  }
+  &.contentArea {
+    padding-top: $topbarHeight;
+  }
+}
+.ddWidth {
+  width: 300px;
+}
+
+.mega-dropdown {
+  position: static;
+  .dropdown-menu {
+    padding: 30px;
+    width: 85%;
+    max-height: 480px;
+    top: 11px !important;
+    overflow: auto;
+  }
+}
+
+@include media-breakpoint-up(lg) {
+  .fixedTopbar {
+    .topbar {
+      width: calc(100% - #{$sidebarWidth});
+      left: auto;
+    }
+  }
+  .isMiniSidebar .fixedTopbar .topbar {
+    width: calc(100% - #{$miniSidebarWidth});
+    left: auto;
+  }
+}
+@include media-breakpoint-down(lg) {
+  .ddWidth {
+    width: 100vw;
+    max-width: 400px;
+  }
+}
+
+.hov-dd:hover,
+.hov-dd:focus {
+  background-color: rgba(0, 0, 0, 0.07);
+  border-radius: $border-radius;
+}
+
+/* Enhanced Topbar with Gradient Theme */
+.topbar.bg-gradient {
+  background: linear-gradient(135deg, #009efb 0%, #0084d6 100%) !important;
+  box-shadow: 0 4px 20px rgba(0, 158, 251, 0.15) !important;
+  border: none !important;
+}
+
+.topbar.bg-gradient .navbar-brand,
+.topbar.bg-gradient .nav-link,
+.topbar.bg-gradient .btn,
+.topbar.bg-gradient .dropdown-toggle {
+  color: white !important;
+}
+
+.topbar.bg-gradient .btn:hover,
+.topbar.bg-gradient .dropdown-toggle:hover {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+  transform: translateY(-1px);
+  transition: all 0.2s ease;
+}
+
+.topbar.bg-gradient .form-control {
+  background-color: rgba(255, 255, 255, 0.15) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  color: white !important;
+}
+
+.topbar.bg-gradient .form-control::placeholder {
+  color: rgba(255, 255, 255, 0.7) !important;
+}
+
+.topbar.bg-gradient .form-control:focus {
+  background-color: rgba(255, 255, 255, 0.2) !important;
+  border-color: rgba(255, 255, 255, 0.4) !important;
+  box-shadow: 0 0 0 0.2rem rgba(255, 255, 255, 0.15) !important;
+}
+
+/* Enhanced Elegant Topbar Styles */
+.elegant-topbar {
+  .elegant-icon-button,
+  .elegant-cart-button {
+    position: relative;
+    overflow: visible; /* Changed to visible to prevent badge trimming */
+    
+    &::before {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) scale(0);
+      width: 100%;
+      height: 100%;
+      background: radial-gradient(circle, rgba(0, 158, 251, 0.1) 0%, transparent 70%);
+      transition: transform 0.3s ease;
+      border-radius: 50%;
+    }
+    
+    &:hover::before {
+      transform: translate(-50%, -50%) scale(1.5);
+    }
+  }
+
+  .elegant-notification-badge,
+  .elegant-cart-badge {
+    animation: pulse-badge 2s infinite;
+    transform-origin: center;
+    
+    /* Ensure badges don't hide icons */
+    pointer-events: none;
+    
+    /* Better centering for text */
+    line-height: 1;
+    padding: 0;
+    font-weight: 600;
+  }
+
+  .elegant-profile-toggle {
+    &:hover .elegant-profile-image {
+      border-color: rgba(0, 158, 251, 0.5) !important;
+      box-shadow: 0 0 0 3px rgba(0, 158, 251, 0.1) !important;
+    }
+  }
+
+  /* Dropdown menu enhancements */
+  .dropdown-menu {
+    border: 1px solid rgba(0, 158, 251, 0.1) !important;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15) !important;
+    backdrop-filter: blur(10px) !important;
+    border-radius: 12px !important;
+    overflow: hidden;
+    z-index: 1050 !important; /* Higher than horizontal navbar (1000) */
+    
+    &::before {
+      content: '';
+      position: absolute;
+      top: -8px;
+      right: 20px;
+      width: 16px;
+      height: 16px;
+      background: white;
+      border: 1px solid rgba(0, 158, 251, 0.1);
+      border-right: none;
+      border-bottom: none;
+      transform: rotate(45deg);
+      z-index: 1051;
+    }
+    
+    .dropdown-item {
+      transition: all 0.3s ease !important;
+      border-radius: 6px !important;
+      margin: 2px 8px !important;
+      
+      &:hover {
+        background: linear-gradient(135deg, rgba(0, 158, 251, 0.1) 0%, rgba(102, 126, 234, 0.08) 100%) !important;
+        transform: translateX(3px) !important;
+        color: #009efb !important;
+      }
+    }
+  }
+}
+
+/* Ensure all dropdowns appear above horizontal navbar */
+.dropdown-menu {
+  z-index: 1050 !important;
+}
+
+/* Specific overrides for notification and cart dropdowns */
+.dropdown-toggle + .dropdown-menu,
+.dropdown.show .dropdown-menu,
+.btn-group.show .dropdown-menu,
+.dropup.show .dropdown-menu,
+.dropend.show .dropdown-menu,
+.dropstart.show .dropdown-menu {
+  z-index: 1060 !important;
+}
+
+/* Higher z-index for notification dropdown container */
+.elegant-topbar .dropdown {
+  z-index: 1060 !important;
+}
+
+.elegant-topbar .dropdown.show {
+  z-index: 1070 !important;
+}
+
+/* Badge pulse animation */
+@keyframes pulse-badge {
+  0% {
+    box-shadow: 0 2px 8px rgba(220, 53, 69, 0.3);
+  }
+  50% {
+    box-shadow: 0 4px 16px rgba(220, 53, 69, 0.5);
+  }
+  100% {
+    box-shadow: 0 2px 8px rgba(220, 53, 69, 0.3);
+  }
+}
+
+/* Header icon spacing for badges */
+.HorizontalTopbar {
+  padding: 0.25rem 0.75rem;
+  z-index: 1010 !important; /* Ensure header is above horizontal nav */
+  
+  .d-flex.align-items-center {
+    gap: 6px;
+  }
+  
+  .elegant-icon-button,
+  .elegant-cart-button {
+    margin: 2px 4px;
+  }
+  
+  /* Ensure dropdowns in horizontal topbar appear above everything */
+  .dropdown-menu {
+    z-index: 1080 !important;
+  }
+  
+  .dropdown {
+    z-index: 1070 !important;
+  }
+  
+  .dropdown.show {
+    z-index: 1080 !important;
+  }
+}
+
+/* Mobile responsive topbar */
+@media (max-width: 768px) {
+  .elegant-topbar {
+    .elegant-icon-button,
+    .elegant-cart-button {
+      padding: 4px 8px !important;
+      margin: 1px 3px !important;
+      min-width: 32px !important;
+      min-height: 32px !important;
+    }
+    
+    .elegant-profile-image {
+      width: 32px !important;
+      height: 32px !important;
+    }
+  }
+  
+  .HorizontalTopbar {
+    padding: 0.2rem 0.5rem !important;
+  }
+}

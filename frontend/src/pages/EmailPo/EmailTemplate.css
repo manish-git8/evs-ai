@@ -1,0 +1,148 @@
+.toast-container {
+  top: 12px;
+  right: 12px;
+}
+
+.toast-message {
+  margin-bottom: 0;
+  position: absolute;
+  top: 0;
+  right: 0;
+  writing-mode: horizontal-tb;
+  text-orientation: mixed;
+  direction: ltr;
+}
+
+.title-container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.select-container {
+  position: relative;
+}
+
+.event-select {
+  width: 220px;
+  font-size: 14px;
+  color: #495057;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.2s ease;
+  border: 0;
+  background-color: #f8f9fa;
+  border-radius: 50rem;
+  padding: 0.5rem 1rem;
+  box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+}
+
+.event-select:focus {
+  box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+  border-color: #80bdff;
+}
+
+.form-label {
+  font-weight: 600;
+  color: #212529;
+  margin-bottom: 0.5rem;
+}
+
+.input-field {
+  border: 2px solid #e9ecef;
+  border-radius: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.input-field:focus {
+  border-color: #0d6efd;
+  box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.1);
+}
+
+.form-tip {
+  color: #6c757d;
+  margin-top: 0.25rem;
+  display: block;
+}
+
+.quill-editor {
+  height: 200px;
+  margin-bottom: 50px;
+}
+
+.button-container {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.submit-button {
+  font-size: 14px;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(13, 110, 253, 0.2);
+  padding: 0.5rem 1rem;
+  border-radius: 0.75rem;
+  font-weight: 600;
+}
+
+.submit-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(13, 110, 253, 0.3);
+}
+
+.email-template-container {
+  max-width: 600px;
+  margin: 0 auto;
+  background: white;
+  padding: 30px;
+  border-radius: 10px;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+  font-family: Arial, sans-serif;
+  line-height: 1.6;
+}
+
+.email-header-section {
+  background: linear-gradient(135deg, #007bff, #0056b3);
+  color: white;
+  padding: 20px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.email-header-section h1 {
+  color: white;
+  border-bottom: 3px solid rgba(255, 255, 255, 0.3);
+  padding-bottom: 15px;
+  margin-bottom: 20px;
+}
+
+.email-content-section {
+  background: #f9f9f9;
+  padding: 25px;
+  border-radius: 8px;
+  border-left: 4px solid #007bff;
+  margin: 20px 0;
+}
+
+.email-content-section h2 {
+  color: #555;
+  margin-top: 0;
+}
+
+.email-footer-section {
+  margin-top: 30px;
+  padding-top: 20px;
+  border-top: 1px solid #ddd;
+  text-align: center;
+  color: #666;
+}
+
+.email-highlight {
+  background-color: #fff3cd;
+  padding: 15px;
+  border-radius: 5px;
+  border-left: 4px solid #ffc107;
+  margin: 15px 0;
+}

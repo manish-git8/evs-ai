@@ -1,0 +1,23 @@
+.address-card-body {
+    background-color: rgba(0 , 158 , 251) !important;
+    width: 102.5%;
+    margin-left: -15px;
+}
+
+/* Media queries for responsiveness */
+
+/* For small devices like phones (max-width: 600px) */
+@media (max-width: 600px) {
+    .address-card-body {
+        width: 113.5%;
+    }
+}
+
+/* For tablets (601px - 1024px) */
+@media (min-width: 601px) and (max-width: 1024px) {
+    .address-card-body {
+        width: 105.8%;
+    }
+}
+
+
