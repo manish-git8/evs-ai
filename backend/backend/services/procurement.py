@@ -85,32 +85,87 @@ async def get_carts_paginated(
     page: int = 1, search: str = "", status: str = "",
     user_id: str = "",
 ) -> dict:
-    """List carts with pagination, search, and status filter."""
+    """List carts with pagination, search, and status filter.
+    The cart API may not support server-side status filtering reliably,
+    so when a status is specified we fetch a larger batch and filter
+    by cartStatusType in Python (matching the dashboard approach)."""
     url = f"{AUTH_API_BASE_URL}/company/{company_id}/cart"
-    params = {
-        "pageSize": PAGE_SIZE,
-        "pageNumber": page - 1,
-        "sortBy": "createdDate",
-        "order": "desc",
-    }
-    if search:
-        params["search"] = search
+
     if status:
-        params["status"] = status
-    if user_id:
-        params["userId"] = user_id
-    data = await _request("GET", url, token=token, params=params)
-    return _paginate(data, PAGE_SIZE, page - 1)
+        # Multi-page fetch: keep fetching pages until we have 5 matching items
+        # or run out of data. This ensures we find the true 5 most recent
+        # items for any status, even if matching items are scattered.
+        batch_size = 50
+        max_pages = 10  # Safety limit: fetch up to 500 items total
+        status_lower = status.lower().replace("_", " ")
+        filtered = []
+        page_num = 0
+
+        while len(filtered) < PAGE_SIZE and page_num < max_pages:
+            params = {
+                "pageSize": batch_size,
+                "pageNumber": page_num,
+                "sortBy": "createdDate",
+                "order": "desc",
+            }
+            if search:
+                params["search"] = search
+            if user_id:
+                params["userId"] = user_id
+            data = await _request("GET", url, token=token, params=params)
+            batch_items = data.get("content") or data.get("data") or (data if isinstance(data, list) else [])
+
+            if not batch_items:
+                break  # No more data from API
+
+            # Log status values on first page for debugging
+            if page_num == 0:
+                statuses_found = set((c.get("cartStatusType") or "NONE") for c in batch_items)
+                logger.info(f"[CART] Requested status='{status}', page 0 has {len(batch_items)} items. cartStatusType values: {statuses_found}")
+
+            for c in batch_items:
+                cart_status = (c.get("cartStatusType") or c.get("status") or "").lower().replace("_", " ")
+                if cart_status == status_lower:
+                    filtered.append(c)
+                    if len(filtered) >= PAGE_SIZE:
+                        break
+
+            # If this page had fewer items than batch_size, we've reached the end
+            if len(batch_items) < batch_size:
+                break
+
+            page_num += 1
+
+        logger.info(f"[CART] Filter '{status_lower}': {len(filtered)} matches found across {page_num + 1} page(s)")
+        return {
+            "items": filtered[:PAGE_SIZE],
+            "totalPages": 1,
+            "currentPage": 1,
+            "totalItems": len(filtered),
+        }
+    else:
+        params = {
+            "pageSize": PAGE_SIZE,
+            "pageNumber": page - 1,
+            "sortBy": "updatedDate",
+            "order": "desc",
+        }
+        if search:
+            params["search"] = search
+        if user_id:
+            params["userId"] = user_id
+        data = await _request("GET", url, token=token, params=params)
+        return _paginate(data, PAGE_SIZE, page - 1)
 
 
 async def get_cart_approvals_paginated(
     token: str, company_id: int, approver_id: str,
-    page: int = 1, search: str = "",
+    page: int = 1, search: str = "", status: str = "pending",
 ) -> dict:
-    """List carts pending approval for a specific approver."""
+    """List cart approvals for a specific approver. status: pending/approved/rejected."""
     url = f"{AUTH_API_BASE_URL}/company/{company_id}/cart/{approver_id}/approvals"
     params = {
-        "status": "pending",
+        "status": status,
         "pageSize": PAGE_SIZE,
         "pageNumber": page - 1,
         "sortBy": "updatedDate",
@@ -261,30 +316,81 @@ async def get_default_supplier_id(token: str, company_id: int):
 
 async def get_pos_paginated(
     token: str, company_id: int,
-    page: int = 1, search: str = "",
+    page: int = 1, search: str = "", status: str = "",
 ) -> dict:
-    """List purchase orders with pagination and search."""
+    """List purchase orders with pagination, search, and optional status filter.
+    The PO API doesn't support orderStatus as a query param — the dashboard
+    filters client-side. We replicate that: fetch a larger batch, then
+    filter by orderStatus in Python."""
     url = f"{AUTH_API_BASE_URL}/company/{company_id}/purchaseOrder"
-    params = {
-        "pageSize": PAGE_SIZE,
-        "pageNumber": page - 1,
-        "sortBy": "orderPlacedDate",
-        "order": "desc",
-    }
-    if search:
-        params["search"] = search
-    data = await _request("GET", url, token=token, params=params)
-    return _paginate(data, PAGE_SIZE, page - 1)
+
+    if status:
+        # Multi-page fetch: keep fetching pages until we have 5 matching items
+        batch_size = 50
+        max_pages = 10  # Safety limit
+        status_lower = status.lower().replace("_", " ")
+        filtered = []
+        page_num = 0
+
+        while len(filtered) < PAGE_SIZE and page_num < max_pages:
+            params = {
+                "pageSize": batch_size,
+                "pageNumber": page_num,
+                "sortBy": "lastModifiedDate",
+                "order": "desc",
+            }
+            if search:
+                params["search"] = search
+            data = await _request("GET", url, token=token, params=params)
+            batch_items = data.get("content") or data.get("data") or (data if isinstance(data, list) else [])
+
+            if not batch_items:
+                break
+
+            if page_num == 0:
+                statuses_found = set((po.get("orderStatus") or "NONE") for po in batch_items)
+                logger.info(f"[PO] Requested status='{status}', page 0 has {len(batch_items)} items. orderStatus values: {statuses_found}")
+
+            for po in batch_items:
+                po_status = (po.get("orderStatus") or "").lower().replace("_", " ")
+                if po_status == status_lower:
+                    filtered.append(po)
+                    if len(filtered) >= PAGE_SIZE:
+                        break
+
+            if len(batch_items) < batch_size:
+                break
+
+            page_num += 1
+
+        logger.info(f"[PO] Filter '{status_lower}': {len(filtered)} matches found across {page_num + 1} page(s)")
+        return {
+            "items": filtered[:PAGE_SIZE],
+            "totalPages": 1,
+            "currentPage": 1,
+            "totalItems": len(filtered),
+        }
+    else:
+        params = {
+            "pageSize": PAGE_SIZE,
+            "pageNumber": page - 1,
+            "sortBy": "lastModifiedDate",
+            "order": "desc",
+        }
+        if search:
+            params["search"] = search
+        data = await _request("GET", url, token=token, params=params)
+        return _paginate(data, PAGE_SIZE, page - 1)
 
 
 async def get_po_approvals_paginated(
     token: str, company_id: int, approver_id: str,
-    page: int = 1, search: str = "",
+    page: int = 1, search: str = "", status: str = "pending",
 ) -> dict:
-    """List POs pending approval for a specific approver."""
+    """List PO approvals for a specific approver. status: pending/approved/rejected."""
     url = f"{AUTH_API_BASE_URL}/company/{company_id}/purchaseOrder/{approver_id}/approvals"
     params = {
-        "status": "pending",
+        "status": status,
         "pageSize": PAGE_SIZE,
         "pageNumber": page - 1,
         "sortBy": "updatedDate",
@@ -352,35 +458,131 @@ async def get_pos_by_status(
 
 
 # ═══════════════════════════════════════════════════════════
-# RFQ APIs
+#  APIs
 # ═══════════════════════════════════════════════════════════
 
 async def get_rfqs_paginated(
     token: str, company_id: int,
-    page: int = 1, search: str = "",
+    page: int = 1, search: str = "", status: str = "",
 ) -> dict:
-    """List RFQs with pagination and search."""
+    """List RFQs with pagination, search, and status filter.
+    The RFQ API ignores the rfqStatus query param — the dashboard shows
+    all RFQs and filters client-side. We replicate that here."""
     url = f"{AUTH_API_BASE_URL}/company/{company_id}/rfqs"
-    params = {
-        "pageSize": PAGE_SIZE,
-        "pageNumber": page - 1,
-        "sortBy": "createdDate",
-        "order": "desc",
+
+    if status:
+        # Fetch 10 items (matching dashboard page size) to cover more statuses
+        params = {
+            "pageSize": 50,
+            "pageNumber": 0,
+            "sortBy": "createdDate",
+            "order": "desc",
+        }
+        if search:
+            params["search"] = search
+        data = await _request("GET", url, token=token, params=params)
+        all_items = data.get("content") or data.get("data") or (data if isinstance(data, list) else [])
+        logger.info(f"[RFQ GENERAL] Fetched {len(all_items)} items from /rfqs endpoint")
+        if all_items:
+            rfq_statuses_found = set((r.get("rfqStatus") or "NONE") for r in all_items)
+            logger.info(f"[RFQ GENERAL] rfqStatus values: {rfq_statuses_found}")
+        status_lower = status.lower().replace("_", " ")
+        filtered = [
+            r for r in all_items
+            if (r.get("rfqStatus") or r.get("status") or "").lower().replace("_", " ") == status_lower
+        ]
+        logger.info(f"[RFQ GENERAL] Filter='{status}' -> '{status_lower}': {len(filtered)} matches")
+        return {
+            "items": filtered[:PAGE_SIZE],
+            "totalPages": 1,
+            "currentPage": 1,
+            "totalItems": len(filtered),
+        }
+    else:
+        params = {
+            "pageSize": PAGE_SIZE,
+            "pageNumber": page - 1,
+            "sortBy": "createdDate",
+            "order": "desc",
+        }
+        if search:
+            params["search"] = search
+        data = await _request("GET", url, token=token, params=params)
+        return _paginate(data, PAGE_SIZE, page - 1)
+
+
+async def get_rfqs_by_status(
+    token: str, company_id: int, user_id: str = "",
+    signoff_status: str = "REQUESTED", page: int = 1, search: str = "",
+) -> dict:
+    """List RFQs filtered by status using the general /rfqs endpoint.
+
+    Uses multi-page fetching with client-side rfqStatus filtering.
+    Includes status aliases (e.g. DRAFT also matches 'created').
+    """
+    # The API may use different rfqStatus values than our UI labels.
+    _STATUS_ALIASES = {
+        "draft": ["draft", "created"],  # API uses 'created' for draft RFQs
     }
-    if search:
-        params["search"] = search
-    data = await _request("GET", url, token=token, params=params)
-    return _paginate(data, PAGE_SIZE, page - 1)
+
+    url = f"{AUTH_API_BASE_URL}/company/{company_id}/rfqs"
+    batch_size = 50
+    max_pages = 10
+    status_lower = signoff_status.lower().replace("_", " ")
+    match_values = _STATUS_ALIASES.get(status_lower, [status_lower])
+
+    filtered = []
+    page_num = 0
+
+    while len(filtered) < PAGE_SIZE and page_num < max_pages:
+        params = {
+            "pageSize": batch_size,
+            "pageNumber": page_num,
+            "sortBy": "createdDate",
+            "order": "desc",
+        }
+        if search:
+            params["search"] = search
+        data = await _request("GET", url, token=token, params=params)
+        batch_items = data.get("content") or data.get("data") or (data if isinstance(data, list) else [])
+
+        if not batch_items:
+            break
+
+        if page_num == 0:
+            rfq_statuses_found = set((r.get("rfqStatus") or "NONE") for r in batch_items)
+            logger.info(f"[RFQ BY STATUS] Requested '{signoff_status}', page 0 has {len(batch_items)} items. rfqStatus values: {rfq_statuses_found}")
+
+        for r in batch_items:
+            rfq_status = (r.get("rfqStatus") or r.get("status") or "").lower().replace("_", " ")
+            if rfq_status in match_values:
+                filtered.append(r)
+                if len(filtered) >= PAGE_SIZE:
+                    break
+
+        if len(batch_items) < batch_size:
+            break
+
+        page_num += 1
+
+    logger.info(f"[RFQ BY STATUS] Filter '{status_lower}' (aliases={match_values}): {len(filtered)} matches across {page_num + 1} page(s)")
+
+    return {
+        "items": filtered[:PAGE_SIZE],
+        "totalPages": 1,
+        "currentPage": 1,
+        "totalItems": len(filtered),
+    }
 
 
 async def get_rfq_approvals_paginated(
     token: str, company_id: int, user_id: str,
-    page: int = 1, search: str = "",
+    page: int = 1, search: str = "", signoff_status: str = "REQUESTED",
 ) -> dict:
-    """List RFQs pending sign-off for a user."""
+    """List RFQ approvals for a user. signoff_status: REQUESTED/APPROVED/REJECTED."""
     url = f"{AUTH_API_BASE_URL}/company/{company_id}/rfqs/{user_id}/approvals"
     params = {
-        "signoffStatus": "REQUESTED",
+        "signoffStatus": signoff_status,
         "pageSize": PAGE_SIZE,
         "pageNumber": page - 1,
         "sortBy": "updatedDate",
@@ -389,6 +591,7 @@ async def get_rfq_approvals_paginated(
     if search:
         params["search"] = search
     data = await _request("GET", url, token=token, params=params)
+    logger.info(f"[RFQ APPROVALS RAW] url={url}, signoffStatus={signoff_status}, raw keys={list(data.keys()) if isinstance(data, dict) else 'list'}, content count={len(data.get('content', []) if isinstance(data, dict) else data)}")
     return _paginate(data, PAGE_SIZE, page - 1)
 
 

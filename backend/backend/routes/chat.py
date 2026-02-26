@@ -35,11 +35,13 @@ from services.procurement import (
     get_pos_paginated,
     get_po_approvals_paginated,
     get_po_item_details,
+    get_pos_by_status,
     approve_po,
     reject_po,
     # RFQ
     get_rfqs_paginated,
     get_rfq_approvals_paginated,
+    get_rfqs_by_status,
     get_rfq_by_id,
     approve_rfq,
     reject_rfq,
@@ -114,6 +116,59 @@ def _submenu_response(entity: str):
     }
 
 
+# ── Status filter options per entity ──
+# Cart API uses UPPERCASE status values (cartStatusType field)
+# PO  API uses UPPERCASE with underscores (orderStatus field)
+# RFQ API uses lowercase with underscores (rfqStatus field)
+_STATUS_FILTERS = {
+    "cart": [
+        ("PENDING_APPROVAL",  "Pending Approval"),
+        ("REJECTED",          "Rejected"),
+        ("SUBMITTED",         "Submitted"),
+        ("DRAFT",             "Draft"),
+        ("POGENERATED",       "PO Generated"),
+    ],
+    "po": [
+        ("SUBMITTED",             "Submitted"),
+        ("PENDING_APPROVAL",      "Pending Approval"),
+        ("PARTIALLY_CONFIRMED",    "Partially Confirmed"),
+        ("CONFIRMED",             "Confirmed"),
+    ],
+    "rfq": [
+        ("CLOSED",                "Closed"),
+        ("DRAFT",                 "Draft"),
+        ("SUBMITTED",             "Submitted"),
+        ("SUPPLIER_SHORTLISTED",  "Supplier Shortlisted"),
+    ],
+}
+
+
+def _status_filter_response(entity: str):
+    """Status filter submenu — shows predefined status options for an entity."""
+    labels = {"cart": "Cart", "po": "Purchase Order", "rfq": "RFQ"}
+    label = labels.get(entity, entity.upper())
+    filters = _STATUS_FILTERS.get(entity, [])
+    menu_items = [
+        {
+            "id": f"status_filter:{entity}:{sid}",
+            "label": slabel,
+            "description": f"View {label}s with {slabel.split(' ', 1)[-1]} status",
+        }
+        for sid, slabel in filters
+    ]
+    return {
+        "success": True,
+        "type": "submenu",
+        "response": f"Select a status to view **{label}s**:",
+        "entity": entity,
+        "menu_items": menu_items,
+    }
+
+
+# Navigation suggestions shown after every response
+_NAV_SUGGESTIONS = ["Back to last menu", "Main menu"]
+
+
 def _list_response(title: str, items: list, pagination: dict, entity: str, submenu: str, search: str = ""):
     """List response — no pagination, just recent items."""
     return {
@@ -130,6 +185,7 @@ def _list_response(title: str, items: list, pagination: dict, entity: str, subme
         },
         "search": search,
         "show_search": True,
+        "suggestions": _NAV_SUGGESTIONS,
     }
 
 
@@ -146,17 +202,16 @@ def _confirm_response(message: str, action_data: dict):
 def _success_response(message: str, suggestions: list = None):
     """Success message with optional next-step suggestions."""
     resp = {"success": True, "type": "success", "response": message}
-    if suggestions:
-        resp["suggestions"] = suggestions
+    resp["suggestions"] = (suggestions or []) + _NAV_SUGGESTIONS
     return resp
 
 
 def _error_response(message: str):
-    return {"success": True, "type": "error", "response": message}
+    return {"success": True, "type": "error", "response": message, "suggestions": _NAV_SUGGESTIONS}
 
 
 def _text_response(message: str):
-    return {"success": True, "type": "text", "response": message}
+    return {"success": True, "type": "text", "response": message, "suggestions": _NAV_SUGGESTIONS}
 
 
 def _reject_reason_response(message: str, reject_data: dict):
@@ -284,11 +339,16 @@ def _format_po_item(item: dict) -> dict:
 def _format_rfq_item(item: dict) -> dict:
     """Format an RFQ for display."""
     rfq_id = str(item.get("rfqId") or item.get("id") or "")
-    rfq_title = _safe_str(item.get("rfqTitle") or item.get("title") or f"RFQ_{rfq_id}")
+    # Use rfqNumber for the display title (matches dashboard), fall back to rfqDisplayId
+    rfq_number = item.get("rfqNumber") or item.get("rfqDisplayId") or (f"RFQ-{rfq_id}" if rfq_id else "RFQ")
+    # Normalize API status values for display (API uses 'created' for Draft)
+    _RFQ_STATUS_DISPLAY = {"created": "Draft"}
+    raw_status = _safe_str(item.get("rfqStatus") or item.get("status") or item.get("signoffStatus") or "unknown")
+    display_status = _RFQ_STATUS_DISPLAY.get(raw_status.lower(), raw_status)
     return {
         "id": rfq_id,
-        "title": rfq_title,
-        "status": _safe_str(item.get("rfqStatus") or item.get("status") or item.get("signoffStatus") or "unknown"),
+        "title": rfq_number,
+        "status": display_status,
         "date": _safe_str(item.get("createdDate") or item.get("updatedDate") or ""),
         "suppliers_count": item.get("supplierCount") or "",
         "created_by": _safe_str(item.get("createdByName") or item.get("createdBy") or ""),
@@ -335,7 +395,8 @@ async def _build_cart_detail(cart_id: str, token: str, company_id: int):
 # ═══════════════════════════════════════════════════════════
 
 async def _try_fetch_detail(entity: str, target_id: str, token: str, company_id: int):
-    """Try to fetch a single item by searching. Returns a response dict or None."""
+    """Try to fetch a single item by searching. Returns a response dict or None.
+    Enriches cart items with line items using catalog lookup for full detail display."""
     icons = {"cart": "🛒", "po": "📦", "rfq": "📝"}
     labels = {"cart": "Cart", "po": "PO", "rfq": "RFQ"}
     icon = icons.get(entity, "📋")
@@ -371,58 +432,111 @@ async def _try_fetch_detail(entity: str, target_id: str, token: str, company_id:
 # Data fetchers — paginated list retrieval per entity+submenu
 # ═══════════════════════════════════════════════════════════
 
-async def _fetch_list(entity: str, submenu: str, token: str, company_id: int, user_id: str, page: int, search: str):
-    """Fetch the right paginated data based on entity + submenu."""
+async def _fetch_list(entity: str, submenu: str, token: str, company_id: int, user_id: str, page: int, search: str, status_filter: str = ""):
+    """Fetch the right paginated data based on entity + submenu + optional status filter.
+
+    Routing strategy:
+      - approve/reject submenus → approvals API (pending items in user's queue)
+      - ALL status filters (REJECTED, APPROVED, PENDING_APPROVAL, SUBMITTED, DRAFT, etc.)
+        → general list API with client-side post-filtering by cartStatusType/orderStatus/rfqStatus
+        This ensures only items with the exact matching status are returned.
+    """
     if entity == "cart":
         if submenu in ("approve", "reject"):
+            # Approval queue — items pending this user's approval decision
             return await get_cart_approvals_paginated(token, company_id, str(user_id), page=page, search=search)
         else:
-            return await get_carts_paginated(token, company_id, page=page, search=search)
+            # ALL status filters — general list with client-side cartStatusType filter
+            return await get_carts_paginated(token, company_id, page=page, search=search, status=status_filter)
     elif entity == "po":
         if submenu in ("approve", "reject"):
             return await get_po_approvals_paginated(token, company_id, str(user_id), page=page, search=search)
+        elif status_filter:
+            # ALL PO status filters — general list with client-side orderStatus filter
+            return await get_pos_paginated(token, company_id, page=page, search=search, status=status_filter)
         else:
             return await get_pos_paginated(token, company_id, page=page, search=search)
     elif entity == "rfq":
         if submenu in ("approve", "reject"):
             return await get_rfq_approvals_paginated(token, company_id, str(user_id), page=page, search=search)
+        elif status_filter:
+            # Status view — general /rfqs with client-side rfqStatus filter
+            return await get_rfqs_by_status(
+                token, company_id, str(user_id),
+                signoff_status=status_filter, page=page, search=search
+            )
         else:
             return await get_rfqs_paginated(token, company_id, page=page, search=search)
 
 
-async def _build_list_response(entity, submenu, token, company_id, user_id, page, search, session=None):
+async def _build_list_response(entity, submenu, token, company_id, user_id, page, search, session=None, status_filter=""):
     """Fetch data, format items, and return a list response."""
-    labels = {
-        ("cart", "approve"): "🛒 Carts Pending Approval",
-        ("cart", "reject"): "🛒 Carts Pending Rejection",
-        ("cart", "status"): "🛒 All Carts",
-        ("po", "approve"): "📦 POs Pending Approval",
-        ("po", "reject"): "📦 POs Pending Rejection",
-        ("po", "status"): "📦 All Purchase Orders",
-        ("rfq", "approve"): "📝 RFQs Pending Approval",
-        ("rfq", "reject"): "📝 RFQs Pending Rejection",
-        ("rfq", "status"): "📝 All RFQs",
-    }
-    title = labels.get((entity, submenu), f"{entity.upper()} List")
+    icons = {"cart": "🛒", "po": "📦", "rfq": "📋"}
+    icon = icons.get(entity, "📋")
+    entity_name = {"cart": "Carts", "po": "Purchase Orders", "rfq": "RFQs"}.get(entity, entity.upper() + "s")
+    entity_name_lower = entity_name.lower()
 
-    # Friendly title prefix for recent items (only when not searching)
-    if not search:
-        entity_name = {"cart": "carts", "po": "purchase orders", "rfq": "RFQs"}.get(entity, entity.upper() + "s")
+    # Human-readable status label lookup
+    _STATUS_DISPLAY = {
+        # Cart statuses (cartStatusType — UPPERCASE, no underscores for some)
+        "APPROVED": "Approved", "REJECTED": "Rejected",
+        "PENDING_APPROVAL": "Pending Approval", "SUBMITTED": "Submitted",
+        "DRAFT": "Draft", "POGENERATED": "PO Generated",
+        # PO statuses (orderStatus — UPPERCASE with underscores)
+        "CONFIRMED": "Confirmed", "PARTIALLY_APPROVED": "Partially Approved",
+        "PARTIALLY_CONFIRMED": "Partially Confirmed",
+        # RFQ statuses via approvals endpoint (UPPERCASE signoffStatus)
+        "CLOSED": "Closed",
+        "SUPPLIER_SHORTLISTED": "Supplier Shortlisted",
+        # Lowercase fallbacks (from general /rfqs endpoint rfqStatus field)
+        "submitted": "Submitted",
+        "supplier_shortlisted": "Supplier Shortlisted",
+        "closed": "Closed", "draft": "Draft",
+        "created": "Created", "completed": "Completed", "cancelled": "Cancelled",
+    }
+
+    data = await _fetch_list(entity, submenu, token, company_id, user_id, page, search, status_filter=status_filter)
+    formatter = FORMATTERS.get(entity, lambda x: x)
+    items = [formatter(i) for i in data.get("items", [])]
+
+    # ── Limit status lists to 5 recent items ──
+    if submenu == "status" and not search:
+        items = items[:5]
+
+    item_count = len(items)
+
+    # Build a friendly title with count
+    if status_filter and not search:
+        status_label = _STATUS_DISPLAY.get(status_filter, status_filter.replace("_", " ").title())
+        # Status emoji mapping
+        _STATUS_ICON = {
+            "Approved": "✅", "Rejected": "❌", "Pending Approval": "⏳",
+            "Submitted": "📤", "Draft": "📝", "PO Generated": "🔄",
+            "Confirmed": "✅", "Partially Approved": "⚡", "Partially Confirmed": "⚡",
+            "Closed": "🔒", "Supplier Shortlisted": "🏆",
+        }
+        status_icon = _STATUS_ICON.get(status_label, icon)
+        if item_count > 0:
+            title = f"{status_icon} {status_label} {entity_name} ({item_count})"
+        else:
+            title = f"{status_icon} {status_label} {entity_name}"
+    elif not search:
         action_label = {
             "approve": "pending approval",
             "reject": "pending rejection",
             "status": "",
         }.get(submenu, "")
         if action_label:
-            title = f"Your recent {entity_name} {action_label}:"
+            title = f"Your recent {entity_name_lower} {action_label}:"
         else:
-            title = f"Your recent {entity_name}:"
-
-    data = await _fetch_list(entity, submenu, token, company_id, user_id, page, search)
-    formatter = FORMATTERS.get(entity, lambda x: x)
-    items = [formatter(i) for i in data.get("items", [])]
+            title = f"Your recent {entity_name_lower}:"
+    else:
+        title = f"{icon} Search results for \"{search}\":"
 
     if not items and page == 1 and not search:
+        if status_filter:
+            status_label = _STATUS_DISPLAY.get(status_filter, status_filter.replace("_", " ").title())
+            return _text_response(f"No {status_label.lower()} {entity_name_lower} found. Try another status filter.")
         suffix = {
             "approve": "for approval",
             "reject": "for rejection",
@@ -431,84 +545,6 @@ async def _build_list_response(entity, submenu, token, company_id, user_id, page
         return _text_response(f"No {entity.upper()} {suffix}.")
     if not items and search:
         return _text_response(f"No results found for \"{search}\". Try a different search term.")
-
-    # ── Enrich cart status items with line-item details + catalog lookup ──
-    if entity == "cart" and submenu == "status" and items:
-        # Use cached catalog for speed (avoids re-fetching every time)
-        import time as _time
-        now = _time.time()
-        if _catalog_cache["data"] is None or (now - _catalog_cache["ts"]) > _CATALOG_CACHE_TTL:
-            _catalog_cache["data"] = await get_catalog_items(token)
-            _catalog_cache["ts"] = now
-        catalog = _catalog_cache["data"]
-
-        async def _fetch_items_for(cart):
-            try:
-                cart_id = cart.get("id")
-                if not cart_id:
-                    return cart
-                raw = await get_cart_detail(token, company_id, cart_id)
-                line_items = []
-                computed_total = 0
-                for li in raw:
-                    # Try multiple keys to find a catalog match
-                    cat_entry = {}
-                    for key in ("catalogItemId", "CatalogItemId", "itemId", "productId"):
-                        val = li.get(key)
-                        if val and str(val) in catalog:
-                            cat_entry = catalog[str(val)]
-                            break
-                    # Also try matching by partId
-                    if not cat_entry:
-                        part = li.get("partId") or li.get("PartId") or ""
-                        if part and str(part) in catalog:
-                            cat_entry = catalog[str(part)]
-
-                    # Resolve item name: cart detail fields first, then catalog Description (PascalCase)
-                    item_name = _safe_str(
-                        li.get("itemName") or li.get("productName") or li.get("name")
-                        or li.get("partName") or li.get("Description") or li.get("description")
-                        or cat_entry.get("Description") or cat_entry.get("description")
-                        or cat_entry.get("itemName") or cat_entry.get("productName")
-                        or cat_entry.get("name") or ""
-                    )
-                    unit_price = (
-                        li.get("unitPrice") or li.get("price") or li.get("UnitPrice")
-                        or cat_entry.get("UnitPrice") or cat_entry.get("unitPrice")
-                        or cat_entry.get("price") or 0
-                    )
-                    qty = li.get("quantity") or li.get("qty") or 0
-                    ext_price = li.get("totalPrice") or li.get("extendedPrice") or li.get("amount") or 0
-                    if (not ext_price or ext_price == 0) and unit_price and qty:
-                        ext_price = float(unit_price) * float(qty)
-                    computed_total += float(ext_price) if ext_price else 0
-                    line_items.append({
-                        "item_name": item_name,
-                        "description": item_name,
-                        "part_id": _safe_str(li.get("partId") or li.get("PartId") or cat_entry.get("PartId") or ""),
-                        "quantity": qty,
-                        "unit_price": unit_price,
-                        "extended_price": ext_price,
-                        "uom": _safe_str(
-                            li.get("uom") or li.get("unitOfMeasure")
-                            or cat_entry.get("UnitOfMeasurement") or cat_entry.get("uom") or ""
-                        ),
-                        "supplier": _safe_str(
-                            li.get("supplierName") or li.get("supplier")
-                            or cat_entry.get("supplierName") or ""
-                        ),
-                    })
-                cart["line_items"] = line_items
-                # Fill total from line items if header didn't have it
-                if not cart.get("total") or cart["total"] == "" or cart["total"] == 0:
-                    cart["total"] = computed_total if computed_total else ""
-            except Exception as e:
-                logger.error(f"[DEBUG] Error enriching cart {cart.get('id')}: {e}")
-                cart["line_items"] = []
-            return cart
-
-        items = await asyncio.gather(*[_fetch_items_for(c) for c in items])
-        items = list(items)
 
     # Store raw items in session for ordinal resolution ("the first one")
     if session is not None:
@@ -757,7 +793,140 @@ async def chat_endpoint(request: Request, message: Message):
         return _error_response("Authentication error. Please log in again.")
 
     # ─────────────────────────────────────────────────
-    # 0. REJECTION REASON FLOW — collect reason text
+    # 0a. STATUS FILTER BUTTON — direct handler for status_filter:entity:STATUS
+    # ─────────────────────────────────────────────────
+    if lower_text.startswith("status_filter:"):
+        # Use original text to preserve case of the status value (RFQ uses lowercase, Cart uses UPPERCASE)
+        orig_parts = text.strip().split(":")
+        parts = lower_text.split(":")
+        if len(parts) == 3:
+            _, filter_entity, _ = parts
+            # Use original-case status from the button ID
+            filter_status = orig_parts[2] if len(orig_parts) == 3 else parts[2].upper()
+            print(f"[STATUS_FILTER HANDLER] entity={filter_entity}, status={filter_status}", flush=True)
+            session["menu"] = filter_entity
+            session["submenu"] = "status"
+            session["status_filter"] = filter_status
+            session["page"] = 1
+            session["search"] = ""
+            try:
+                return await _build_list_response(
+                    filter_entity, "status", token, company_id, str(user_id), 1, "", session, status_filter=filter_status
+                )
+            except (ProcurementAPIError, Exception) as e:
+                logger.warning(f"[STATUS_FILTER] Error fetching {filter_entity} with status {filter_status}: {e}")
+                return _text_response(f"No data found.")
+
+    # ── Navigation shortcuts: "Back to last menu" / "Main menu" ──
+    if lower_text in ("⬅️ back to last menu", "back to last menu", "back", "go back", "previous menu", "last menu"):
+        last_entity = session.get("menu")
+        if last_entity and last_entity in ("cart", "po", "rfq"):
+            return _submenu_response(last_entity)
+        return _menu_response()
+
+    if lower_text in ("🏠 main menu", "main menu", "home", "start", "menu", "back to main"):
+        session["menu"] = None
+        session["submenu"] = None
+        session["page"] = 1
+        session["search"] = ""
+        session["status_filter"] = None
+        return _menu_response()
+
+    # ─────────────────────────────────────────────────
+    # 0b. NATURAL LANGUAGE STATUS FILTER (voice/typed)
+    #     E.g. "show pending approval carts", "approved cart", "po generated", "rejected PO"
+    # ─────────────────────────────────────────────────
+    # Status keyword → (entity → correct API value) mapping
+    # Cart API: UPPERCASE  |  PO API: UPPERCASE  |  RFQ API: lowercase
+    _STATUS_KEYWORDS_BY_ENTITY = {
+        # Values must match the actual API status field:
+        # Cart: cartStatusType (UPPERCASE)  |  PO: orderStatus (UPPERCASE)
+        # RFQ: signoffStatus via approvals endpoint (UPPERCASE)
+        "approved":             {"cart": "APPROVED",              "po": "APPROVED",                 "rfq": "APPROVED"},
+        "rejected":             {"cart": "REJECTED",              "po": "REJECTED",                 "rfq": "REJECTED"},
+        "pending":              {"cart": "PENDING_APPROVAL",      "po": "PENDING_APPROVAL",         "rfq": None},
+        "pending approval":     {"cart": "PENDING_APPROVAL",      "po": "PENDING_APPROVAL",         "rfq": None},
+        "submitted":            {"cart": "SUBMITTED",             "po": "SUBMITTED",                "rfq": "SUBMITTED"},
+        "draft":                {"cart": "DRAFT",                 "po": None,                       "rfq": "DRAFT"},
+        "confirmed":            {"cart": None,                    "po": "CONFIRMED",                "rfq": None},
+        "partially confirmed":  {"cart": None,                    "po": "PARTIALLY_CONFIRMED",      "rfq": None},
+        "partially approved":   {"cart": None,                    "po": "PARTIALLY_APPROVED",       "rfq": None},
+        "po generated":         {"cart": "POGENERATED",           "po": None,                       "rfq": None},
+        "supplier shortlisted": {"cart": None,                    "po": None,                       "rfq": "SUPPLIER_SHORTLISTED"},
+        "shortlisted":          {"cart": None,                    "po": None,                       "rfq": "SUPPLIER_SHORTLISTED"},
+        "closed":               {"cart": None,                    "po": None,                       "rfq": "CLOSED"},
+        "created":              {"cart": None,                    "po": None,                       "rfq": "DRAFT"},
+        "completed":            {"cart": None,                    "po": None,                       "rfq": "CLOSED"},
+        "cancelled":            {"cart": None,                    "po": None,                       "rfq": "CLOSED"},
+    }
+    _ENTITY_KEYWORDS = {
+        "procurement carts": "cart", "procurement cart": "cart",
+        "purchase orders": "po", "purchase order": "po",
+        "carts": "cart", "cart": "cart",
+        "pos": "po", "po": "po", "p.o": "po",
+        "rfqs": "rfq", "rfq": "rfq", "quotations": "rfq", "quotation": "rfq", "r.f.q": "rfq",
+    }
+    # Map statuses that are unique to one entity (for fallback when entity not explicit)
+    _STATUS_DEFAULT_ENTITY = {
+        "approved": "cart",
+        "po generated": "cart",
+        "supplier shortlisted": "rfq", "shortlisted": "rfq",
+        "confirmed": "po", "partially confirmed": "po", "partially approved": "po",
+        "closed": "rfq", "created": "rfq", "completed": "rfq", "cancelled": "rfq",
+    }
+
+    # Skip NLP status detection if text looks like an approve/reject command with an ID
+    import re as _re
+    _has_action_id = _re.search(r'\b(approve|reject)\b.*\d', lower_text)
+
+    if not _has_action_id:
+        detected_entity = None
+        matched_status_phrase = ""
+
+        # 1. Match longest status phrases first
+        for phrase in sorted(_STATUS_KEYWORDS_BY_ENTITY.keys(), key=len, reverse=True):
+            if phrase in lower_text:
+                matched_status_phrase = phrase
+                break
+
+        if matched_status_phrase:
+            # 2. Remove matched status phrase before entity detection
+            remaining_text = lower_text.replace(matched_status_phrase, " ").strip()
+
+            for phrase in sorted(_ENTITY_KEYWORDS.keys(), key=len, reverse=True):
+                if phrase in remaining_text:
+                    detected_entity = _ENTITY_KEYWORDS[phrase]
+                    break
+
+            # 3. Fallback: if no entity found, infer from status
+            if not detected_entity:
+                detected_entity = _STATUS_DEFAULT_ENTITY.get(matched_status_phrase)
+
+            if detected_entity:
+                # Resolve the correct API status value for this entity
+                api_status = _STATUS_KEYWORDS_BY_ENTITY[matched_status_phrase].get(detected_entity)
+                if not api_status:
+                    # This status doesn't apply to this entity — show friendly message
+                    entity_labels = {"cart": "Cart", "po": "PO", "rfq": "RFQ"}
+                    return _text_response(
+                        f"**{matched_status_phrase.title()}** is not a valid status for {entity_labels.get(detected_entity, detected_entity.upper())}s."
+                    )
+
+                logger.info(f"[STATUS-NLP] Detected: entity={detected_entity} status={api_status} from text='{text}'")
+                session["menu"] = detected_entity
+                session["submenu"] = "status"
+                session["status_filter"] = api_status
+                session["page"] = 1
+                session["search"] = ""
+                try:
+                    return await _build_list_response(
+                        detected_entity, "status", token, company_id, str(user_id), 1, "", session, status_filter=api_status
+                    )
+                except (ProcurementAPIError, Exception) as e:
+                    return _text_response(f"No data found.")
+
+    # ─────────────────────────────────────────────────
+    # 0b. REJECTION REASON FLOW — collect reason text
     # ─────────────────────────────────────────────────
     if session.get("pending_reject"):
         pr = session["pending_reject"]
@@ -907,6 +1076,28 @@ async def chat_endpoint(request: Request, message: Message):
             target_id = resolved_id
             target_entity = context_entity
             # Don't return — fall through to Section 6 below
+        elif resolved_id and entity in ("cart", "po", "rfq"):
+            # ── User typed "cart 1475" / "po 123" / "rfq 45" → show detail view directly ──
+            logger.info(f"[NAVIGATE-DETAIL] Redirecting '{text}' to detail view for {entity} {resolved_id}")
+            try:
+                result = await _try_fetch_detail(entity, resolved_id, token, company_id)
+                if result:
+                    return result
+                # Cross-search other entities if not found
+                other_entities = [e for e in ("cart", "po", "rfq") if e != entity]
+                for alt_entity in other_entities:
+                    alt_result = await _try_fetch_detail(alt_entity, resolved_id, token, company_id)
+                    if alt_result:
+                        return alt_result
+                return _text_response(
+                    f"❌ No matching record found for **{resolved_id}**.\n\n"
+                    "Try one of these:\n"
+                    "• **\"Show carts\"** → Browse all carts\n"
+                    "• **\"Show POs\"** → Browse all purchase orders\n"
+                    "• **\"Show RFQs\"** → Browse all RFQs"
+                )
+            except ProcurementAPIError as e:
+                return _error_response(f"Failed to load details: {e}")
         else:
             # Ticket form
             if entity == "ticket":
@@ -1006,7 +1197,7 @@ async def chat_endpoint(request: Request, message: Message):
             except ProcurementAPIError as e:
                 return _error_response(f"Failed to load details: {e}")
 
-        target_entity = entity or session["menu"]
+        target_entity = entity or session.get("menu")
         if not target_entity:
             return _menu_response()
 
@@ -1015,6 +1206,10 @@ async def chat_endpoint(request: Request, message: Message):
         session["submenu"] = submenu_key
         session["page"] = 1
         session["search"] = ""
+
+        # For status, show filter submenu to choose a status category first
+        if submenu_key == "status":
+            return _status_filter_response(target_entity)
 
         try:
             return await _build_list_response(

@@ -91,7 +91,7 @@ const ChatBot = () => {
       text: greeting,
       responseType: 'menu',
       menuItems: [
-        { id: 'cart', label: '🛒 Cart', description: 'Manage procurement carts' },
+        { id: 'cart', label: '🛒 Procurement Cart', description: 'Manage procurement carts' },
         { id: 'po', label: '📦 PO', description: 'Manage purchase orders' },
         { id: 'rfq', label: '📝 RFQ', description: 'Manage request for quotes' },
         { id: 'ticket', label: '🎫 Raise Ticket', description: 'Raise a support query' },
@@ -727,7 +727,7 @@ const ChatBot = () => {
       'anyone there', 'you there', 'evs help', 'namaste evs',
       'hello evsprocure', 'whats up evs',
     ];
-    if (wakeWords.some(w => lower.includes(w))) {
+    if (wakeWords.some(w => lower.includes(w)) || /^(hi|hello|hey|good\s*(morning|afternoon|evening)|namaste|hola|yo|sup|hii|helo)$/i.test(lower.trim())) {
       // Don't send a second welcome — startVoiceSession already sends one.
       // Just silently consume the wake word so it's not sent as a command.
       return;
@@ -744,7 +744,7 @@ const ChatBot = () => {
     if (!voiceSessionRef.current) return;
 
     // ── Junk filter: only send if text contains a recognized command keyword ──
-    const commandKeywords = /\b(cart|po|rfq|approve|reject|accept|decline|deny|status|details?|budget|back|menu|help|yes|no|confirm|cancel|search|page|next|previous|show|view|check|list|open|create|ticket|support|order|quote|hi|hello|hey)\b/i;
+    const commandKeywords = /\b(cart|po|rfq|approve|reject|accept|decline|deny|status|details?|budget|back|menu|help|yes|no|confirm|cancel|search|page|next|previous|show|view|check|list|open|create|ticket|support|order|quote|hi|hello|hey|pending|submitted|draft|rejected|approved|confirmed|closed|shortlisted|generated|partially)\b/i;
     const hasNumber = /\d{3,}/.test(lower);
     if (!commandKeywords.test(lower) && !hasNumber) {
       console.log('[Voice] ⚠️ Ignoring unrecognized command:', normalized);
@@ -787,6 +787,11 @@ const ChatBot = () => {
   }, []);
 
   const startVoiceSession = useCallback(async () => {
+    // Prevent double-triggering (e.g. interim + final wake word results)
+    if (voiceActiveRef.current) {
+      console.log('[Voice] Voice session already active, skipping duplicate start');
+      return;
+    }
     console.log('[Voice] Starting voice session...');
     // Stop background wake word listener
     if (bgRecognitionRef.current) {
@@ -804,7 +809,7 @@ const ChatBot = () => {
     voiceSessionRef.current = true;
     resetInactivityTimer();
     startActiveListening();
-    addBotMessage({ text: `Hello ${userNameRef.current}! 👋 Voice mode active. Say: Cart, PO status, Approve cart 1414, or Budget.`, responseType: 'text' });
+    addBotMessage({ text: `Hello ${userNameRef.current}! 👋 Voice mode active. How can I help you?`, responseType: 'text' });
 
     // Health check every 30s
     healthCheckRef.current = setInterval(() => {
@@ -878,7 +883,7 @@ const ChatBot = () => {
             'evs help', 'evs bot', 'talk to evs', 'namaste evs',
           ];
 
-          if (isTrigger || wakeWords.some(w => text.includes(w))) {
+          if ((isTrigger || wakeWords.some(w => text.includes(w))) && !wakeWordTriggeredRef.current) {
             console.log('[WakeWord] ✅ Wake word detected:', text, '(interim:', !event.results[i].isFinal, ')');
             wakeWordTriggeredRef.current = true;
             try { bg.stop(); } catch (e) { }
@@ -1081,33 +1086,6 @@ const ChatBot = () => {
                 {item.last_updated && <span className="cb-item-detail">🕐 Updated: {fmtDate(item.last_updated)}</span>}
               </div>
 
-              {/* Inline line items for cart status */}
-              {lineItems.length > 0 && (
-                <div className="cb-detail-items">
-                  <div className="cb-detail-section-title">📋 Items ({lineItems.length})</div>
-                  <div className="cb-detail-items-scroll">
-                    {lineItems.map((li, liIdx) => {
-                      const name = safe(li.item_name) || safe(li.description) || `Item ${liIdx + 1}`;
-                      return (
-                        <div key={liIdx} className="cb-compact-line">
-                          <span className="cb-line-name">{name}</span>
-                          {li.quantity ? <span className="cb-line-meta">*{li.quantity}</span> : null}
-                          {li.extended_price ? <span className="cb-line-total">{fmtCurrency(li.extended_price)}</span> : null}
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <div className="cb-total-row">
-                    <span className="cb-total-label">Total</span>
-                    <span className="cb-total-value">{fmtCurrency(lineItems.reduce((sum, li) => sum + (parseFloat(li.extended_price) || 0), 0))}</span>
-                  </div>
-                </div>
-              )}
-
-              {/* Empty cart indicator */}
-              {lineItems.length === 0 && submenu === 'status' && (
-                <div className="cb-detail-empty">🛒 Cart is empty</div>
-              )}
 
               {(submenu === 'approve' || submenu === 'reject') && (
                 <div className="cb-item-actions">
