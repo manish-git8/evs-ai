@@ -317,17 +317,40 @@ async def get_default_supplier_id(token: str, company_id: int):
 async def get_pos_paginated(
     token: str, company_id: int,
     page: int = 1, search: str = "", status: str = "",
+    user_id: str = "",
 ) -> dict:
     """List purchase orders with pagination, search, and optional status filter.
-    The PO API doesn't support orderStatus as a query param — the dashboard
-    filters client-side. We replicate that: fetch a larger batch, then
-    filter by orderStatus in Python."""
-    url = f"{AUTH_API_BASE_URL}/company/{company_id}/purchaseOrder"
-
-    if status:
-        # Multi-page fetch: keep fetching pages until we have 5 matching items
+    When a status is provided, uses the /byStatus endpoint (same as dashboard)
+    which supports server-side orderStatus filtering."""
+    if status and user_id:
+        # Use the byStatus endpoint — same as the dashboard's getPOsByStatusForUser
+        url = f"{AUTH_API_BASE_URL}/company/{company_id}/purchaseOrder/{user_id}/byStatus"
+        params = {
+            "orderStatus": status,
+            "pageSize": PAGE_SIZE,
+            "pageNumber": page - 1,
+            "sortBy": "orderPlacedDate",
+            "order": "desc",
+        }
+        if search:
+            params["search"] = search
+        logger.info(f"[PO] Using byStatus endpoint: {url} with orderStatus='{status}'")
+        data = await _request("GET", url, token=token, params=params)
+        items = data.get("content") or data.get("data") or (data if isinstance(data, list) else [])
+        logger.info(f"[PO] byStatus returned {len(items)} items for status='{status}'")
+        if items:
+            logger.info(f"[PO] First item keys: {list(items[0].keys())[:15]}")
+        return {
+            "items": items[:PAGE_SIZE],
+            "totalPages": data.get("totalPages", 1),
+            "currentPage": page,
+            "totalItems": data.get("totalElements", len(items)),
+        }
+    elif status:
+        # Fallback: no user_id, use general endpoint with client-side filter
+        url = f"{AUTH_API_BASE_URL}/company/{company_id}/purchaseOrder"
         batch_size = 50
-        max_pages = 10  # Safety limit
+        max_pages = 10
         status_lower = status.lower().replace("_", " ")
         filtered = []
         page_num = 0
@@ -336,7 +359,7 @@ async def get_pos_paginated(
             params = {
                 "pageSize": batch_size,
                 "pageNumber": page_num,
-                "sortBy": "lastModifiedDate",
+                "sortBy": "orderPlacedDate",
                 "order": "desc",
             }
             if search:
@@ -347,12 +370,8 @@ async def get_pos_paginated(
             if not batch_items:
                 break
 
-            if page_num == 0:
-                statuses_found = set((po.get("orderStatus") or "NONE") for po in batch_items)
-                logger.info(f"[PO] Requested status='{status}', page 0 has {len(batch_items)} items. orderStatus values: {statuses_found}")
-
             for po in batch_items:
-                po_status = (po.get("orderStatus") or "").lower().replace("_", " ")
+                po_status = (po.get("orderStatus") or po.get("status") or po.get("poStatus") or "").lower().replace("_", " ")
                 if po_status == status_lower:
                     filtered.append(po)
                     if len(filtered) >= PAGE_SIZE:
@@ -360,10 +379,8 @@ async def get_pos_paginated(
 
             if len(batch_items) < batch_size:
                 break
-
             page_num += 1
 
-        logger.info(f"[PO] Filter '{status_lower}': {len(filtered)} matches found across {page_num + 1} page(s)")
         return {
             "items": filtered[:PAGE_SIZE],
             "totalPages": 1,

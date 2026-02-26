@@ -1161,28 +1161,36 @@
 
 .cb-suggestions {
   display: flex !important;
-  flex-wrap: wrap !important;
-  gap: 6px !important;
-  margin-top: 8px !important;
+  flex-wrap: nowrap !important;
+  gap: 8px !important;
+  margin-top: 10px !important;
   margin-left: 38px !important;
 }
 
 .cb-suggestion-btn {
-  padding: 6px 14px !important;
-  background: white !important;
-  border: 1.5px solid #dbeafe !important;
+  padding: 8px 18px !important;
+  background: linear-gradient(135deg, #3b82f6, #2563eb) !important;
+  border: none !important;
   border-radius: 999px !important;
   font-size: 12px !important;
-  font-weight: 500 !important;
-  color: #1e40af !important;
+  font-weight: 600 !important;
+  color: white !important;
   cursor: pointer !important;
-  transition: all 0.2s ease !important;
+  transition: all 0.25s ease !important;
+  white-space: nowrap !important;
+  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.3) !important;
+  letter-spacing: 0.01em !important;
 }
 
 .cb-suggestion-btn:hover {
-  background: #eff6ff !important;
-  border-color: #93c5fd !important;
-  transform: scale(1.03) !important;
+  background: linear-gradient(135deg, #2563eb, #1d4ed8) !important;
+  transform: translateY(-1px) scale(1.03) !important;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4) !important;
+}
+
+.cb-suggestion-btn:active {
+  transform: translateY(0) scale(0.98) !important;
+  box-shadow: 0 1px 3px rgba(37, 99, 235, 0.3) !important;
 }
 
 /* ═══════════════════════════════════════════════════════ */

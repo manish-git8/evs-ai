@@ -452,10 +452,10 @@ async def _fetch_list(entity: str, submenu: str, token: str, company_id: int, us
         if submenu in ("approve", "reject"):
             return await get_po_approvals_paginated(token, company_id, str(user_id), page=page, search=search)
         elif status_filter:
-            # ALL PO status filters — general list with client-side orderStatus filter
-            return await get_pos_paginated(token, company_id, page=page, search=search, status=status_filter)
+            # ALL PO status filters — use byStatus endpoint (same as dashboard)
+            return await get_pos_paginated(token, company_id, page=page, search=search, status=status_filter, user_id=str(user_id))
         else:
-            return await get_pos_paginated(token, company_id, page=page, search=search)
+            return await get_pos_paginated(token, company_id, page=page, search=search, user_id=str(user_id))
     elif entity == "rfq":
         if submenu in ("approve", "reject"):
             return await get_rfq_approvals_paginated(token, company_id, str(user_id), page=page, search=search)

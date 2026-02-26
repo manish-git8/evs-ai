@@ -51,7 +51,7 @@ class Settings:
     
     # Procurement API Configuration
     PROCUREMENT_API_BASE: str = os.getenv("PROCUREMENT_API_BASE", "http://procurement-api.internal")
-    API_TIMEOUT: int = int(os.getenv("API_TIMEOUT", "10"))
+    API_TIMEOUT: int = int(os.getenv("API_TIMEOUT", "30"))
     
     # LLM Configuration (Ollama + Mistral)
     LLM_ENABLED: bool = os.getenv("LLM_ENABLED", "true").lower() == "true"
