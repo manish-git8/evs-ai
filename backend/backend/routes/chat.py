@@ -43,6 +43,7 @@ from services.procurement import (
     get_rfq_approvals_paginated,
     get_rfqs_by_status,
     get_rfq_by_id,
+    get_rfq_signoff_data,
     approve_rfq,
     reject_rfq,
     # Budget
@@ -627,16 +628,24 @@ async def _check_item_status(entity, target_id, token, company_id, user_id=None)
         if not matched_item:
             return None, False, None, None, None
         item = matched_item
-        status = (
-            item.get("cartStatusType")
-            or item.get("approvalDecision")
-            or item.get("status")
-            or item.get("orderStatus")
-            or item.get("cartStatus")
-            or item.get("rfqStatus")
-            or item.get("signoffStatus")
-            or ""
-        )
+        # For RFQ approval items, signoffStatus (REQUESTED) takes priority over rfqStatus
+        if entity_type == "rfq":
+            status = (
+                item.get("signoffStatus")
+                or item.get("approvalDecision")
+                or item.get("rfqStatus")
+                or item.get("status")
+                or ""
+            )
+        else:
+            status = (
+                item.get("cartStatusType")
+                or item.get("approvalDecision")
+                or item.get("status")
+                or item.get("orderStatus")
+                or item.get("cartStatus")
+                or ""
+            )
         internal_id = (
             item.get("cartId")
             or item.get("PurchaseOrderId")
@@ -725,9 +734,15 @@ async def _do_approve(entity, target_id, token, company_id, user_id, first_name,
             await approve_po(token, company_id, target_id, user_id, first_name)
             await broadcast_cart_update({"type": "po_approved", "po_id": target_id})
         elif entity == "rfq":
-            if not signoff_id:
-                return _error_response("Cannot approve RFQ: missing signoff ID.")
-            await approve_rfq(token, company_id, target_id, signoff_id, user_id, first_name, rfq_signoff_user_id=rfq_signoff_user_id)
+            # Fetch signoff data from RFQ detail (same as dashboard)
+            sd = await get_rfq_signoff_data(token, company_id, target_id, user_id)
+            real_signoff_id = sd.get("signoff_id") or signoff_id
+            real_rfq_signoff_user_id = sd.get("rfqSignOffUserId") or rfq_signoff_user_id
+            if not real_signoff_id:
+                return _error_response("Cannot approve RFQ: could not retrieve signoff data. Please try again.")
+            logger.info(f"[DO-APPROVE-RFQ] rfqId={target_id} signoff_id={real_signoff_id} rfqSignOffUserId={real_rfq_signoff_user_id}")
+            await approve_rfq(token, company_id, target_id, real_signoff_id, user_id, first_name,
+                              signoff_data=sd)
             await broadcast_cart_update({"type": "rfq_approved", "rfq_id": target_id})
 
         return _success_response(
@@ -751,9 +766,15 @@ async def _do_reject(entity, target_id, token, company_id, user_id, first_name, 
             await reject_po(token, company_id, target_id, user_id, first_name, reason)
             await broadcast_cart_update({"type": "po_rejected", "po_id": target_id})
         elif entity == "rfq":
-            if not signoff_id:
-                return _error_response("Cannot reject RFQ: missing signoff ID.")
-            await reject_rfq(token, company_id, target_id, signoff_id, user_id, first_name, reason, rfq_signoff_user_id=rfq_signoff_user_id)
+            # Fetch signoff data from RFQ detail (same as dashboard)
+            sd = await get_rfq_signoff_data(token, company_id, target_id, user_id)
+            real_signoff_id = sd.get("signoff_id") or signoff_id
+            real_rfq_signoff_user_id = sd.get("rfqSignOffUserId") or rfq_signoff_user_id
+            if not real_signoff_id:
+                return _error_response("Cannot reject RFQ: could not retrieve signoff data. Please try again.")
+            logger.info(f"[DO-REJECT-RFQ] rfqId={target_id} signoff_id={real_signoff_id} rfqSignOffUserId={real_rfq_signoff_user_id}")
+            await reject_rfq(token, company_id, target_id, real_signoff_id, user_id, first_name, reason,
+                             signoff_data=sd)
             await broadcast_cart_update({"type": "rfq_rejected", "rfq_id": target_id})
 
         return _success_response(
@@ -1272,7 +1293,9 @@ async def chat_endpoint(request: Request, message: Message):
                 "How else can I assist you?"
             )
 
-        if status and status.lower() not in (
+        # Status check: only block if item is NOT in the approval queue
+        # If in_queue=True, the API already confirmed it's pending approval
+        if not in_queue and status and status.lower() not in (
             "pending approval", "pending", "awaiting approval",
             "submitted", "requested", "pending_approval",
         ):

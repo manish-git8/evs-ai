@@ -620,48 +620,102 @@ async def get_rfq_by_id(token: str, company_id: int, rfq_id: str) -> dict:
     return await _request("GET", url, token=token)
 
 
+async def get_rfq_signoff_data(token: str, company_id: int, rfq_id: str, user_id) -> dict:
+    """Fetch RFQ detail and extract signoff IDs for the given user.
+    
+    Mirrors the dashboard's RfqApprovalDetails.handleConfirmAction:
+    1. GET /rfqs/{rfqId} → rfq detail with suppliers
+    2. Find supplier with signOffRequests containing signoffUsers
+    3. Match current user's userId in signoffUsers
+    4. Return rfqSignOffUserId, rfqSignOffId (signoffId for URL)
+    """
+    uid = int(user_id) if str(user_id).isdigit() else user_id
+    try:
+        rfq = await get_rfq_by_id(token, company_id, rfq_id)
+        suppliers = rfq.get("suppliers", [])
+        
+        for supplier in suppliers:
+            sign_off_req = supplier.get("signOffRequests")
+            if not sign_off_req:
+                continue
+            signoff_users = sign_off_req.get("signoffUsers", [])
+            for su in signoff_users:
+                su_user_id = su.get("signoffUserId", {}).get("userId")
+                if su_user_id is not None and int(su_user_id) == uid:
+                    result = {
+                        "rfqSignOffUserId": su.get("rfqSignOffUserId"),
+                        "rfqSignOffId": sign_off_req.get("rfqSignOffId"),
+                        "signoff_id": str(sign_off_req.get("rfqSignOffId", "")),
+                        "signoff_status": su.get("signoffStatus"),
+                        "is_active": su.get("isActive"),
+                        "created_date": su.get("createdDate"),
+                        "created_by": su.get("createdBy"),
+                        "updated_by": su.get("updatedBy"),
+                    }
+                    logger.info(f"[RFQ-SIGNOFF-DATA] Found signoff data for user {uid} in RFQ {rfq_id}: {result}")
+                    return result
+        
+        logger.warning(f"[RFQ-SIGNOFF-DATA] No signoff user match for userId={uid} in RFQ {rfq_id}")
+        return {}
+    except Exception as e:
+        logger.error(f"[RFQ-SIGNOFF-DATA] Error fetching signoff data for RFQ {rfq_id}: {e}")
+        return {}
+
+
 async def approve_rfq(
     token: str, company_id: int, rfq_id: str, signoff_id: str,
     user_id, first_name: str, notes: str = "",
-    rfq_signoff_user_id=None,
+    signoff_data: dict = None,
 ) -> dict:
-    """Approve an RFQ signoff — uses the correct API body format."""
+    """Approve an RFQ signoff — builds exact payload matching dashboard."""
     url = f"{AUTH_API_BASE_URL}/company/{company_id}/rfqs/{rfq_id}/signoffs/{signoff_id}/approve"
     uid = int(user_id) if str(user_id).isdigit() else user_id
-    signoff_user_id = int(rfq_signoff_user_id) if rfq_signoff_user_id and str(rfq_signoff_user_id).isdigit() else rfq_signoff_user_id
-    signoff_id_int = int(signoff_id) if str(signoff_id).isdigit() else signoff_id
+    sd = signoff_data or {}
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
     body = {
-        "rfqSignOffUserId": signoff_user_id or uid,
-        "rfqSignOffId": signoff_id_int,
+        "rfqSignOffUserId": sd.get("rfqSignOffUserId") or uid,
+        "rfqSignOffId": sd.get("rfqSignOffId") or (int(signoff_id) if str(signoff_id).isdigit() else signoff_id),
         "signoffUserId": {"userId": uid},
         "signoffStatus": "approved",
+        "signedAt": now,
         "comments": notes or "Approved via chatbot",
-        "isActive": True,
+        "isActive": sd.get("is_active", True),
+        "createdDate": sd.get("created_date") or now,
+        "updatedDate": now,
+        "createdBy": sd.get("created_by"),
+        "updatedBy": sd.get("updated_by"),
     }
     logger.info(f"[APPROVE-RFQ] URL={url}  body={body}")
-    return await _request("PUT", url, token=token, json=body)
+    return await _request("POST", url, token=token, json=body)
 
 
 async def reject_rfq(
     token: str, company_id: int, rfq_id: str, signoff_id: str,
     user_id, first_name: str, reason: str = "",
-    rfq_signoff_user_id=None,
+    signoff_data: dict = None,
 ) -> dict:
-    """Reject an RFQ signoff — uses the correct API body format."""
+    """Reject an RFQ signoff — builds exact payload matching dashboard."""
     url = f"{AUTH_API_BASE_URL}/company/{company_id}/rfqs/{rfq_id}/signoffs/{signoff_id}/approve"
     uid = int(user_id) if str(user_id).isdigit() else user_id
-    signoff_user_id = int(rfq_signoff_user_id) if rfq_signoff_user_id and str(rfq_signoff_user_id).isdigit() else rfq_signoff_user_id
-    signoff_id_int = int(signoff_id) if str(signoff_id).isdigit() else signoff_id
+    sd = signoff_data or {}
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
     body = {
-        "rfqSignOffUserId": signoff_user_id or uid,
-        "rfqSignOffId": signoff_id_int,
+        "rfqSignOffUserId": sd.get("rfqSignOffUserId") or uid,
+        "rfqSignOffId": sd.get("rfqSignOffId") or (int(signoff_id) if str(signoff_id).isdigit() else signoff_id),
         "signoffUserId": {"userId": uid},
         "signoffStatus": "rejected",
+        "signedAt": now,
         "comments": reason or "Rejected via chatbot",
-        "isActive": True,
+        "isActive": sd.get("is_active", True),
+        "createdDate": sd.get("created_date") or now,
+        "updatedDate": now,
+        "createdBy": sd.get("created_by"),
+        "updatedBy": sd.get("updated_by"),
     }
     logger.info(f"[REJECT-RFQ] URL={url}  body={body}")
-    return await _request("PUT", url, token=token, json=body)
+    return await _request("POST", url, token=token, json=body)
 
 
 # ═══════════════════════════════════════════════════════════
