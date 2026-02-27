@@ -621,29 +621,45 @@ async def get_rfq_by_id(token: str, company_id: int, rfq_id: str) -> dict:
 async def approve_rfq(
     token: str, company_id: int, rfq_id: str, signoff_id: str,
     user_id, first_name: str, notes: str = "",
+    rfq_signoff_user_id=None,
 ) -> dict:
-    """Approve an RFQ signoff — mirrors RfqApprovalService.approveRfqSignoff."""
+    """Approve an RFQ signoff — uses the correct API body format."""
     url = f"{AUTH_API_BASE_URL}/company/{company_id}/rfqs/{rfq_id}/signoffs/{signoff_id}/approve"
     uid = int(user_id) if str(user_id).isdigit() else user_id
-    return await _request("POST", url, token=token, json={
-        "signoffDecision": "approved",
-        "notes": notes,
-        "user": {"userId": uid, "firstName": first_name},
-    })
+    signoff_user_id = int(rfq_signoff_user_id) if rfq_signoff_user_id and str(rfq_signoff_user_id).isdigit() else rfq_signoff_user_id
+    signoff_id_int = int(signoff_id) if str(signoff_id).isdigit() else signoff_id
+    body = {
+        "rfqSignOffUserId": signoff_user_id or uid,
+        "rfqSignOffId": signoff_id_int,
+        "signoffUserId": {"userId": uid},
+        "signoffStatus": "approved",
+        "comments": notes or "Approved via chatbot",
+        "isActive": True,
+    }
+    logger.info(f"[APPROVE-RFQ] URL={url}  body={body}")
+    return await _request("PUT", url, token=token, json=body)
 
 
 async def reject_rfq(
     token: str, company_id: int, rfq_id: str, signoff_id: str,
     user_id, first_name: str, reason: str = "",
+    rfq_signoff_user_id=None,
 ) -> dict:
-    """Reject an RFQ signoff."""
+    """Reject an RFQ signoff — uses the correct API body format."""
     url = f"{AUTH_API_BASE_URL}/company/{company_id}/rfqs/{rfq_id}/signoffs/{signoff_id}/approve"
     uid = int(user_id) if str(user_id).isdigit() else user_id
-    return await _request("POST", url, token=token, json={
-        "signoffDecision": "rejected",
-        "notes": reason or "Rejected via chatbot",
-        "user": {"userId": uid, "firstName": first_name},
-    })
+    signoff_user_id = int(rfq_signoff_user_id) if rfq_signoff_user_id and str(rfq_signoff_user_id).isdigit() else rfq_signoff_user_id
+    signoff_id_int = int(signoff_id) if str(signoff_id).isdigit() else signoff_id
+    body = {
+        "rfqSignOffUserId": signoff_user_id or uid,
+        "rfqSignOffId": signoff_id_int,
+        "signoffUserId": {"userId": uid},
+        "signoffStatus": "rejected",
+        "comments": reason or "Rejected via chatbot",
+        "isActive": True,
+    }
+    logger.info(f"[REJECT-RFQ] URL={url}  body={body}")
+    return await _request("PUT", url, token=token, json=body)
 
 
 # ═══════════════════════════════════════════════════════════

@@ -613,10 +613,10 @@ async def _check_item_status(entity, target_id, token, company_id, user_id=None)
         return False
 
     def _extract_info(data, entity_type, search_id):
-        """Extract status and ID from API response, verifying exact match."""
+        """Extract status, ID, and signoff metadata from API response."""
         items = data.get("items", []) if data else []
         if not items:
-            return None, False, None
+            return None, False, None, None, None
         # Find the exact match first
         matched_item = None
         for item in items:
@@ -624,7 +624,7 @@ async def _check_item_status(entity, target_id, token, company_id, user_id=None)
                 matched_item = item
                 break
         if not matched_item:
-            return None, False, None
+            return None, False, None, None, None
         item = matched_item
         status = (
             item.get("cartStatusType")
@@ -633,6 +633,7 @@ async def _check_item_status(entity, target_id, token, company_id, user_id=None)
             or item.get("orderStatus")
             or item.get("cartStatus")
             or item.get("rfqStatus")
+            or item.get("signoffStatus")
             or ""
         )
         internal_id = (
@@ -643,7 +644,12 @@ async def _check_item_status(entity, target_id, token, company_id, user_id=None)
             or item.get("targetId")
             or item.get("id")
         )
-        return str(status).strip(), True, internal_id
+        # Extract RFQ signoff metadata for approve/reject
+        signoff_id = str(item.get("signoffId") or item.get("rfqSignoffId") or item.get("rfqSignOffId") or "") if entity_type == "rfq" else None
+        rfq_signoff_user_id = str(item.get("rfqSignOffUserId") or item.get("rfqSignoffUserId") or "") if entity_type == "rfq" else None
+        if entity_type == "rfq":
+            logger.info(f"[EXTRACT-INFO] RFQ match: rfqId={internal_id}, signoffId={signoff_id}, rfqSignOffUserId={rfq_signoff_user_id}, status={status}, all_keys={list(item.keys())}")
+        return str(status).strip(), True, internal_id, signoff_id, rfq_signoff_user_id
 
     try:
         # Build parallel tasks: [general_list, approval_queue]
@@ -675,23 +681,23 @@ async def _check_item_status(entity, target_id, token, company_id, user_id=None)
         queue_result = results[1] if len(results) > 1 and not isinstance(results[1], Exception) else None
 
         # Priority 1: approval queue — authoritative for approve/reject actions
-        q_status, q_found, q_id = _extract_info(queue_result, entity, target_id) if queue_result else (None, False, None)
+        q_status, q_found, q_id, q_signoff_id, q_rfq_signoff_user_id = _extract_info(queue_result, entity, target_id) if queue_result else (None, False, None, None, None)
         if q_found:
-            logger.info(f"[CHECK-STATUS] Exact match in approval queue: status={q_status} id={q_id}")
-            return q_status, True, q_id, True  # in_approval_queue = True
+            logger.info(f"[CHECK-STATUS] Exact match in approval queue: status={q_status} id={q_id} signoff_id={q_signoff_id} rfq_signoff_user_id={q_rfq_signoff_user_id}")
+            return q_status, True, q_id, True, q_signoff_id, q_rfq_signoff_user_id
 
         # Priority 2: general list — item exists but NOT in user's queue
-        g_status, g_found, g_id = _extract_info(general_result, entity, target_id) if general_result else (None, False, None)
+        g_status, g_found, g_id, g_signoff_id, g_rfq_signoff_user_id = _extract_info(general_result, entity, target_id) if general_result else (None, False, None, None, None)
         if g_found:
             logger.info(f"[CHECK-STATUS] Exact match in general list only: status={g_status} id={g_id}")
-            return g_status, True, g_id, False  # in_approval_queue = False
+            return g_status, True, g_id, False, g_signoff_id, g_rfq_signoff_user_id
 
-        return None, False, None, False
+        return None, False, None, False, None, None
     except Exception:
-        return None, False, None, False
+        return None, False, None, False, None, None
 
 
-async def _do_approve(entity, target_id, token, company_id, user_id, first_name, signoff_id=None, display_id=None):
+async def _do_approve(entity, target_id, token, company_id, user_id, first_name, signoff_id=None, display_id=None, rfq_signoff_user_id=None):
     """Execute an approval action. Pre-validation is already done before the confirm prompt."""
     label = {"cart": "Cart", "po": "PO", "rfq": "RFQ"}.get(entity, entity.upper())
     show_id = display_id or target_id
@@ -706,7 +712,7 @@ async def _do_approve(entity, target_id, token, company_id, user_id, first_name,
         elif entity == "rfq":
             if not signoff_id:
                 return _error_response("Cannot approve RFQ: missing signoff ID.")
-            await approve_rfq(token, company_id, target_id, signoff_id, user_id, first_name)
+            await approve_rfq(token, company_id, target_id, signoff_id, user_id, first_name, rfq_signoff_user_id=rfq_signoff_user_id)
             await broadcast_cart_update({"type": "rfq_approved", "rfq_id": target_id})
 
         return _success_response(
@@ -717,7 +723,7 @@ async def _do_approve(entity, target_id, token, company_id, user_id, first_name,
         raise  # Let the caller's confirm flow handle the error
 
 
-async def _do_reject(entity, target_id, token, company_id, user_id, first_name, reason="", signoff_id=None, display_id=None):
+async def _do_reject(entity, target_id, token, company_id, user_id, first_name, reason="", signoff_id=None, display_id=None, rfq_signoff_user_id=None):
     """Execute a rejection action. Pre-validation is already done before the confirm prompt."""
     label = {"cart": "Cart", "po": "PO", "rfq": "RFQ"}.get(entity, entity.upper())
     show_id = display_id or target_id
@@ -732,7 +738,7 @@ async def _do_reject(entity, target_id, token, company_id, user_id, first_name, 
         elif entity == "rfq":
             if not signoff_id:
                 return _error_response("Cannot reject RFQ: missing signoff ID.")
-            await reject_rfq(token, company_id, target_id, signoff_id, user_id, first_name, reason)
+            await reject_rfq(token, company_id, target_id, signoff_id, user_id, first_name, reason, rfq_signoff_user_id=rfq_signoff_user_id)
             await broadcast_cart_update({"type": "rfq_rejected", "rfq_id": target_id})
 
         return _success_response(
@@ -953,6 +959,8 @@ async def chat_endpoint(request: Request, message: Message):
             "target_id": show_id,
             "internal_id": pr["internal_id"],
             "reason": reason,
+            "signoff_id": pr.get("signoff_id"),
+            "rfq_signoff_user_id": pr.get("rfq_signoff_user_id"),
         }
         reason_display = f"\n\n**Reason:** {reason}" if reason else "\n\n**Reason:** _(none provided)_"
         return _confirm_response(
@@ -977,13 +985,15 @@ async def chat_endpoint(request: Request, message: Message):
                     return await _do_approve(
                         cd["entity"], api_id, token, company_id,
                         user_id, first_name, cd.get("signoff_id"),
-                        display_id=cd["target_id"]
+                        display_id=cd["target_id"],
+                        rfq_signoff_user_id=cd.get("rfq_signoff_user_id"),
                     )
                 elif ca == "reject":
                     return await _do_reject(
                         cd["entity"], api_id, token, company_id,
                         user_id, first_name, cd.get("reason", ""), cd.get("signoff_id"),
-                        display_id=cd["target_id"]
+                        display_id=cd["target_id"],
+                        rfq_signoff_user_id=cd.get("rfq_signoff_user_id"),
                     )
                 elif ca == "show_pending":
                     # User confirmed they want to see pending list
@@ -1227,10 +1237,10 @@ async def chat_endpoint(request: Request, message: Message):
         entity_label = {"cart": "Cart", "po": "PO", "rfq": "RFQ"}.get(target_entity, target_entity)
 
         # ── Pre-validate: check if the item exists and is in the user's approval queue ──
-        status, found, internal_id, in_queue = await _check_item_status(
+        status, found, internal_id, in_queue, signoff_id, rfq_signoff_user_id = await _check_item_status(
             target_entity, target_id, token, company_id, user_id=user_id
         )
-        logger.info(f"[APPROVE/REJECT] target_id={target_id}  internal_id={internal_id}  status={status}  found={found}  in_queue={in_queue}")
+        logger.info(f"[APPROVE/REJECT] target_id={target_id}  internal_id={internal_id}  status={status}  found={found}  in_queue={in_queue}  signoff_id={signoff_id}  rfq_signoff_user_id={rfq_signoff_user_id}")
 
         if not found:
             return _text_response(
@@ -1264,6 +1274,8 @@ async def chat_endpoint(request: Request, message: Message):
                 "entity": target_entity,
                 "target_id": target_id,
                 "internal_id": str(internal_id) if internal_id else target_id,
+                "signoff_id": signoff_id,
+                "rfq_signoff_user_id": rfq_signoff_user_id,
             }
             return _reject_reason_response(
                 f"📝 Please provide a **reason** for rejecting {entity_label} **{target_id}**:",
@@ -1281,6 +1293,8 @@ async def chat_endpoint(request: Request, message: Message):
                 "target_id": target_id,
                 "internal_id": str(internal_id) if internal_id else target_id,
                 "reason": "",
+                "signoff_id": signoff_id,
+                "rfq_signoff_user_id": rfq_signoff_user_id,
             }
             return _confirm_response(
                 f"Are you sure you want to **{action_label}** {entity_label} **{target_id}**?",
