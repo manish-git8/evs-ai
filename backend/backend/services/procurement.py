@@ -595,12 +595,14 @@ async def get_rfqs_by_status(
 async def get_rfq_approvals_paginated(
     token: str, company_id: int, user_id: str,
     page: int = 1, search: str = "", signoff_status: str = "REQUESTED",
+    page_size: int = None,
 ) -> dict:
     """List RFQ approvals for a user. signoff_status: REQUESTED/APPROVED/REJECTED."""
+    effective_size = page_size or PAGE_SIZE
     url = f"{AUTH_API_BASE_URL}/company/{company_id}/rfqs/{user_id}/approvals"
     params = {
         "signoffStatus": signoff_status,
-        "pageSize": PAGE_SIZE,
+        "pageSize": effective_size,
         "pageNumber": page - 1,
         "sortBy": "updatedDate",
         "order": "desc",
@@ -609,7 +611,7 @@ async def get_rfq_approvals_paginated(
         params["search"] = search
     data = await _request("GET", url, token=token, params=params)
     logger.info(f"[RFQ APPROVALS RAW] url={url}, signoffStatus={signoff_status}, raw keys={list(data.keys()) if isinstance(data, dict) else 'list'}, content count={len(data.get('content', []) if isinstance(data, dict) else data)}")
-    return _paginate(data, PAGE_SIZE, page - 1)
+    return _paginate(data, effective_size, page - 1)
 
 
 async def get_rfq_by_id(token: str, company_id: int, rfq_id: str) -> dict:

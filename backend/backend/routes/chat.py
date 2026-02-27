@@ -590,6 +590,7 @@ async def _check_item_status(entity, target_id, token, company_id, user_id=None)
             ]
         elif entity_type == "rfq":
             candidates = [
+                str(item.get("rfqNumber") or ""),
                 str(item.get("rfqTitle") or ""),
                 str(item.get("title") or ""),
                 str(item.get("rfqId") or ""),
@@ -661,9 +662,10 @@ async def _check_item_status(entity, target_id, token, company_id, user_id=None)
         elif entity == "po":
             general_task = get_pos_paginated(token, company_id, page=1, search=target_id)
         elif entity == "rfq":
+            # Try multiple search formats: plain ID, RFQ-prefixed, and rfqNumber
             general_task = get_rfqs_paginated(token, company_id, page=1, search=target_id)
         else:
-            return None, False, None, False
+            return None, False, None, False, None, None
 
         if user_id:
             if entity == "cart":
@@ -671,7 +673,9 @@ async def _check_item_status(entity, target_id, token, company_id, user_id=None)
             elif entity == "po":
                 queue_task = get_po_approvals_paginated(token, company_id, str(user_id), page=1, search=target_id)
             elif entity == "rfq":
-                queue_task = get_rfq_approvals_paginated(token, company_id, str(user_id), page=1, search=target_id)
+                # Fetch ALL pending RFQ approvals (no search, large page) and match locally by rfqNumber
+                # because the API search doesn't reliably match rfqNumber format
+                queue_task = get_rfq_approvals_paginated(token, company_id, str(user_id), page=1, search="", page_size=50)
 
         # Run both in parallel
         tasks = [general_task] + ([queue_task] if queue_task else [])
@@ -691,6 +695,17 @@ async def _check_item_status(entity, target_id, token, company_id, user_id=None)
         if g_found:
             logger.info(f"[CHECK-STATUS] Exact match in general list only: status={g_status} id={g_id}")
             return g_status, True, g_id, False, g_signoff_id, g_rfq_signoff_user_id
+
+        # Priority 3 (RFQ only): retry general search with RFQ-{id} prefix format
+        if entity == "rfq" and not g_found and target_id.isdigit():
+            try:
+                general_retry = await get_rfqs_paginated(token, company_id, page=1, search=f"RFQ-{target_id}")
+                g2_status, g2_found, g2_id, g2_signoff_id, g2_rfq_signoff_user_id = _extract_info(general_retry, entity, target_id)
+                if g2_found:
+                    logger.info(f"[CHECK-STATUS] Found RFQ via RFQ-{target_id} search: status={g2_status} id={g2_id}")
+                    return g2_status, True, g2_id, False, g2_signoff_id, g2_rfq_signoff_user_id
+            except Exception:
+                pass
 
         return None, False, None, False, None, None
     except Exception:
