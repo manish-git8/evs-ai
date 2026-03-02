@@ -985,6 +985,17 @@ const ChatBot = () => {
     return '#9ca3af';
   };
 
+  // ── Entity dashboard link builder ──
+  const getEntityLink = (entity, id) => {
+    if (!id) return null;
+    switch ((entity || '').toLowerCase()) {
+      case 'cart': return `/cartDetails/${id}`;
+      case 'po': return `/purchase-order-detail/${id}`;
+      case 'rfq': return `/RfqDetails/${id}`;
+      default: return null;
+    }
+  };
+
   // ═══════════════════════════════════════════════════════
   // RENDER HELPERS — Menu, List, Confirm, etc.
   // ═══════════════════════════════════════════════════════
@@ -1043,60 +1054,107 @@ const ChatBot = () => {
         )}
 
         {/* Item Cards */}
-        {items.map((item, idx) => {
-          // Safely convert any value to a renderable string (guards against nested API objects)
-          const safe = (v) => {
-            if (v == null) return '';
-            if (typeof v === 'string') return v;
-            if (typeof v === 'number') return String(v);
-            if (typeof v === 'object') {
-              if (v.firstName || v.lastName) return [v.firstName, v.lastName].filter(Boolean).join(' ');
-              return v.name || v.supplierName || v.title || v.email || JSON.stringify(v);
-            }
-            return String(v);
-          };
-          const fmtCurrency = (v) => {
-            if (v == null || v === '') return '';
-            const n = typeof v === 'number' ? v : parseFloat(v);
-            return isNaN(n) ? v : `$${n.toFixed(2)}`;
-          };
-          const fmtDate = (v) => {
-            if (!v) return '';
-            try { return new Date(v).toLocaleDateString(); } catch { return v; }
-          };
-          const title = safe(item.title);
-          const status = safe(item.status);
-          const createdBy = safe(item.created_by);
-          const supplier = safe(item.supplier);
-          const lineItems = item.line_items || [];
-          return (
-            <div key={item.id || idx} className="cb-item-card">
-              <div className="cb-item-header">
-                <span className="cb-item-title">{title || (item.id ? `#${item.id}` : 'Item')}</span>
-                <span className="cb-item-status" style={{ backgroundColor: getStatusColor(status) + '20', color: getStatusColor(status) }}>
-                  {status}
-                </span>
-              </div>
-              <div className="cb-item-details">
-                {item.date && <span className="cb-item-detail">📅 {fmtDate(item.date)}</span>}
-                {createdBy && <span className="cb-item-detail">👤 {createdBy}</span>}
-                {supplier && <span className="cb-item-detail">🏢 {supplier}</span>}
-                {item.needed_by && <span className="cb-item-detail">📦 Need by: {fmtDate(item.needed_by)}</span>}
-                {item.item_count && <span className="cb-item-detail">📋 {item.item_count} items</span>}
-                {item.last_updated && <span className="cb-item-detail">🕐 Updated: {fmtDate(item.last_updated)}</span>}
-              </div>
-
-
-              {(submenu === 'approve' || submenu === 'reject') && (
-                <div className="cb-item-actions">
-                  <button className="cb-action-approve" onClick={() => handleItemClick(item, submenu)}>
-                    {submenu === 'approve' ? <><Check size={14} /> Approve</> : <><XCircle size={14} /> Reject</>}
-                  </button>
+        {(submenu === 'approve' || submenu === 'reject') ? (
+          /* ── Compact table layout for approve/reject ── */
+          <div className="cb-approval-table">
+            {items.map((item, idx) => {
+              const safe = (v) => {
+                if (v == null) return '';
+                if (typeof v === 'string') return v;
+                if (typeof v === 'number') return String(v);
+                if (typeof v === 'object') {
+                  if (v.firstName || v.lastName) return [v.firstName, v.lastName].filter(Boolean).join(' ');
+                  return v.name || v.supplierName || v.title || v.email || JSON.stringify(v);
+                }
+                return String(v);
+              };
+              const title = safe(item.title) || (item.id ? `#${item.id}` : 'Item');
+              const entityLink = getEntityLink(item.entity, item.id);
+              return (
+                <div key={item.id || idx} className="cb-approval-row">
+                  {entityLink ? (
+                    <a href={entityLink} className="cb-approval-label cb-cart-link" title="Open in dashboard">{title}</a>
+                  ) : (
+                    <span className="cb-approval-label">{title}</span>
+                  )}
+                  <div className="cb-approval-btns">
+                    <button
+                      className="cb-approval-btn-approve"
+                      title="Approve"
+                      onClick={() => handleItemClick(item, 'approve')}
+                    >
+                      <Check size={11} strokeWidth={3} />
+                    </button>
+                    <button
+                      className="cb-approval-btn-reject"
+                      title="Reject"
+                      onClick={() => handleItemClick(item, 'reject')}
+                    >
+                      <X size={11} strokeWidth={3} />
+                    </button>
+                  </div>
                 </div>
-              )}
-            </div>
-          );
-        })}
+              );
+            })}
+          </div>
+        ) : (
+          /* ── Regular card layout for status/search views ── */
+          items.map((item, idx) => {
+            const safe = (v) => {
+              if (v == null) return '';
+              if (typeof v === 'string') return v;
+              if (typeof v === 'number') return String(v);
+              if (typeof v === 'object') {
+                if (v.firstName || v.lastName) return [v.firstName, v.lastName].filter(Boolean).join(' ');
+                return v.name || v.supplierName || v.title || v.email || JSON.stringify(v);
+              }
+              return String(v);
+            };
+            const fmtCurrency = (v) => {
+              if (v == null || v === '') return '';
+              const n = typeof v === 'number' ? v : parseFloat(v);
+              return isNaN(n) ? v : `$${n.toFixed(2)}`;
+            };
+            const fmtDate = (v) => {
+              if (!v) return '';
+              try { return new Date(v).toLocaleDateString(); } catch { return v; }
+            };
+            const title = safe(item.title);
+            const status = safe(item.status);
+            const createdBy = safe(item.created_by);
+            const supplier = safe(item.supplier);
+            const titleDisplay = title || (item.id ? `#${item.id}` : 'Item');
+            const entityLink = getEntityLink(item.entity, item.id);
+            return (
+              <div key={item.id || idx} className="cb-item-card">
+                <div className="cb-item-header">
+                  {entityLink ? (
+                    <a
+                      href={entityLink}
+                      className="cb-item-title cb-cart-link"
+                      title="Open in dashboard"
+                    >
+                      {titleDisplay}
+                    </a>
+                  ) : (
+                    <span className="cb-item-title">{titleDisplay}</span>
+                  )}
+                  <span className="cb-item-status" style={{ backgroundColor: getStatusColor(status) + '20', color: getStatusColor(status) }}>
+                    {status}
+                  </span>
+                </div>
+                <div className="cb-item-details">
+                  {item.date && <span className="cb-item-detail">📅 {fmtDate(item.date)}</span>}
+                  {createdBy && <span className="cb-item-detail">👤 {createdBy}</span>}
+                  {supplier && <span className="cb-item-detail">🏢 {supplier}</span>}
+                  {item.needed_by && <span className="cb-item-detail">📦 Need by: {fmtDate(item.needed_by)}</span>}
+                  {item.item_count && <span className="cb-item-detail">📋 {item.item_count} items</span>}
+                  {item.last_updated && <span className="cb-item-detail">🕐 Updated: {fmtDate(item.last_updated)}</span>}
+                </div>
+              </div>
+            );
+          })
+        )}
 
         {/* Pagination */}
         {pagination && pagination.totalPages > 1 && (
@@ -1219,7 +1277,7 @@ const ChatBot = () => {
         <label>Subject</label>
         <input
           type="text"
-          placeholder="Brief summary of your issue"
+          placeholder="e.g. Unable to approve cart, PO not loading..."
           value={ticketForm.subject}
           onChange={(e) => setTicketForm(prev => ({ ...prev, subject: e.target.value }))}
         />
@@ -1284,7 +1342,17 @@ const ChatBot = () => {
         {/* Header */}
         <div className="cb-detail-header">
           <div className="cb-detail-title-row">
-            <span className="cb-detail-title">{safe(header.title)}</span>
+            {getEntityLink(header.entity, header.id) ? (
+              <a
+                href={getEntityLink(header.entity, header.id)}
+                className="cb-detail-title cb-cart-link"
+                title="Open in dashboard"
+              >
+                {safe(header.title)}
+              </a>
+            ) : (
+              <span className="cb-detail-title">{safe(header.title)}</span>
+            )}
             <span className="cb-item-status" style={{ backgroundColor: getStatusColor(safe(header.status)) + '20', color: getStatusColor(safe(header.status)) }}>
               {safe(header.status)}
             </span>
@@ -1330,12 +1398,29 @@ const ChatBot = () => {
     );
   };
 
-  const formatMarkdownText = (text) => {
+  const formatMarkdownText = (text, isBot = false) => {
     if (!text) return '';
-    return text
+    let html = text
       .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
       .replace(/\*(.*?)\*/g, '<em>$1</em>')
       .replace(/\n/g, '<br />');
+    // Only inject clickable entity links in bot messages
+    if (isBot) {
+      html = html
+        .replace(
+          /\b(CART-\d+)\b/gi,
+          (match) => `<a href="/carts" class="cb-cart-link" title="View in dashboard">${match}</a>`
+        )
+        .replace(
+          /\b(PO-\d+|PO #\d+)\b/gi,
+          (match) => `<a href="/dashboard" class="cb-cart-link" title="View in dashboard">${match}</a>`
+        )
+        .replace(
+          /\b(RFQ-\d+|RFQ #\d+)\b/gi,
+          (match) => `<a href="/Rfq" class="cb-cart-link" title="View in dashboard">${match}</a>`
+        );
+    }
+    return html;
   };
 
   // ═══════════════════════════════════════════════════════
@@ -1438,7 +1523,7 @@ const ChatBot = () => {
                       }
                     </div>
                     <div className={`chatbot-message-bubble ${msg.responseType === 'error' ? 'cb-error-bubble' : ''} ${msg.responseType === 'success' ? 'cb-success-bubble' : ''}`}>
-                      <p style={{ margin: 0 }} dangerouslySetInnerHTML={{ __html: formatMarkdownText(msg.text) }} />
+                      <p style={{ margin: 0 }} dangerouslySetInnerHTML={{ __html: formatMarkdownText(msg.text, msg.type === 'bot') }} />
                     </div>
                   </div>
                 </div>

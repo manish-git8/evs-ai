@@ -36,6 +36,7 @@ from services.procurement import (
     get_po_approvals_paginated,
     get_po_item_details,
     get_pos_by_status,
+    get_po_by_order_number,
     approve_po,
     reject_po,
     # RFQ
@@ -90,12 +91,12 @@ def _menu_response():
     return {
         "success": True,
         "type": "menu",
-        "response": "What would you like to manage?",
+        "response": "How can I help you today?",
         "menu_items": [
-            {"id": "cart", "label": "🛒 Cart", "description": "Manage procurement carts"},
-            {"id": "po", "label": "📦 PO", "description": "Manage purchase orders"},
-            {"id": "rfq", "label": "📝 RFQ", "description": "Manage request for quotes"},
-            {"id": "ticket", "label": "🎫 Raise Ticket", "description": "Raise a support query"},
+            {"id": "cart",   "label": "🛒 Procurement Cart", "description": "Manage procurement carts"},
+            {"id": "po",     "label": "📦 PO",               "description": "Manage purchase orders"},
+            {"id": "rfq",    "label": "📝 RFQ",              "description": "Manage request for quotes"},
+            {"id": "ticket", "label": "🎫 Raise Ticket",     "description": "Raise a support query"},
         ],
     }
 
@@ -110,9 +111,8 @@ def _submenu_response(entity: str):
         "response": f"Select an action for **{label}**:",
         "entity": entity,
         "menu_items": [
-            {"id": "approve", "label": "✅ Approve", "description": f"Approve pending {label}s"},
-            {"id": "reject", "label": "❌ Reject", "description": f"Reject pending {label}s"},
-            {"id": "status", "label": "📊 Status", "description": f"View {label} status"},
+            {"id": "approve_reject", "label": f"Approve/Reject {label}s", "description": f"Approve or reject pending {label}s"},
+            {"id": "status", "label": "Status", "description": f"View {label} status"},
         ],
     }
 
@@ -230,7 +230,7 @@ def _ticket_form_response():
     return {
         "success": True,
         "type": "ticket_form",
-        "response": "📝 **Raise a Support Ticket**\nPlease fill in the details below:",
+        "response": "Raise a Support Ticket\nPlease fill in the details below:",
     }
 
 
@@ -398,9 +398,9 @@ async def _build_cart_detail(cart_id: str, token: str, company_id: int):
 async def _try_fetch_detail(entity: str, target_id: str, token: str, company_id: int):
     """Try to fetch a single item by searching. Returns a response dict or None.
     Enriches cart items with line items using catalog lookup for full detail display."""
-    icons = {"cart": "🛒", "po": "📦", "rfq": "📝"}
+    icons = {"cart": "", "po": "", "rfq": ""}
     labels = {"cart": "Cart", "po": "PO", "rfq": "RFQ"}
-    icon = icons.get(entity, "📋")
+    icon = icons.get(entity, "")
     label = labels.get(entity, entity.upper())
 
     try:
@@ -408,7 +408,11 @@ async def _try_fetch_detail(entity: str, target_id: str, token: str, company_id:
             data = await get_carts_paginated(token, company_id, page=1, search=target_id)
             formatter = _format_cart_item
         elif entity == "po":
-            data = await get_pos_paginated(token, company_id, page=1, search=target_id)
+            # Use purchaseOrderNo param (mirrors dashboard getPoByOrderNumber) — most reliable
+            data = await get_po_by_order_number(token, company_id, target_id)
+            # Fallback: generic search
+            if not data.get("items"):
+                data = await get_pos_paginated(token, company_id, page=1, search=target_id)
             formatter = _format_po_item
         elif entity == "rfq":
             data = await get_rfqs_paginated(token, company_id, page=1, search=target_id)
@@ -420,7 +424,7 @@ async def _try_fetch_detail(entity: str, target_id: str, token: str, company_id:
         if items:
             formatted = [formatter(items[0])]
             return _list_response(
-                f"{icon} {label} **{target_id}** Details",
+                f"{label} {target_id} Details",
                 formatted, {"currentPage": 1, "totalPages": 1, "totalItems": 1},
                 entity, "status", target_id
             )
@@ -472,8 +476,7 @@ async def _fetch_list(entity: str, submenu: str, token: str, company_id: int, us
 
 async def _build_list_response(entity, submenu, token, company_id, user_id, page, search, session=None, status_filter=""):
     """Fetch data, format items, and return a list response."""
-    icons = {"cart": "🛒", "po": "📦", "rfq": "📋"}
-    icon = icons.get(entity, "📋")
+    icon = ""
     entity_name = {"cart": "Carts", "po": "Purchase Orders", "rfq": "RFQs"}.get(entity, entity.upper() + "s")
     entity_name_lower = entity_name.lower()
 
@@ -500,27 +503,19 @@ async def _build_list_response(entity, submenu, token, company_id, user_id, page
     formatter = FORMATTERS.get(entity, lambda x: x)
     items = [formatter(i) for i in data.get("items", [])]
 
-    # ── Limit status lists to 5 recent items ──
-    if submenu == "status" and not search:
-        items = items[:5]
+    # ── Limit lists to 10 recent items ──
+    if submenu in ("approve", "reject", "status") and not search:
+        items = items[:10]
 
     item_count = len(items)
 
     # Build a friendly title with count
     if status_filter and not search:
         status_label = _STATUS_DISPLAY.get(status_filter, status_filter.replace("_", " ").title())
-        # Status emoji mapping
-        _STATUS_ICON = {
-            "Approved": "✅", "Rejected": "❌", "Pending Approval": "⏳",
-            "Submitted": "📤", "Draft": "📝", "PO Generated": "🔄",
-            "Confirmed": "✅", "Partially Approved": "⚡", "Partially Confirmed": "⚡",
-            "Closed": "🔒", "Supplier Shortlisted": "🏆",
-        }
-        status_icon = _STATUS_ICON.get(status_label, icon)
         if item_count > 0:
-            title = f"{status_icon} {status_label} {entity_name} ({item_count})"
+            title = f"{status_label} {entity_name} ({item_count})"
         else:
-            title = f"{status_icon} {status_label} {entity_name}"
+            title = f"{status_label} {entity_name}"
     elif not search:
         action_label = {
             "approve": "pending approval",
@@ -532,7 +527,7 @@ async def _build_list_response(entity, submenu, token, company_id, user_id, page
         else:
             title = f"Your recent {entity_name_lower}:"
     else:
-        title = f"{icon} Search results for \"{search}\":"
+        title = f"Search results for \"{search}\":"
 
     if not items and page == 1 and not search:
         if status_filter:
@@ -669,7 +664,8 @@ async def _check_item_status(entity, target_id, token, company_id, user_id=None)
         if entity == "cart":
             general_task = get_carts_paginated(token, company_id, page=1, search=target_id)
         elif entity == "po":
-            general_task = get_pos_paginated(token, company_id, page=1, search=target_id)
+            # Use purchaseOrderNo param for reliable lookup by display number (e.g. PO-1635)
+            general_task = get_po_by_order_number(token, company_id, target_id)
         elif entity == "rfq":
             # Try multiple search formats: plain ID, RFQ-prefixed, and rfqNumber
             general_task = get_rfqs_paginated(token, company_id, page=1, search=target_id)
@@ -746,7 +742,7 @@ async def _do_approve(entity, target_id, token, company_id, user_id, first_name,
             await broadcast_cart_update({"type": "rfq_approved", "rfq_id": target_id})
 
         return _success_response(
-            f"✅ {label} **{show_id}** has been approved!",
+            f"{label} {show_id} has been approved.",
             suggestions=[f"View more {entity}s", "Back to menu"]
         )
     except ProcurementAPIError:
@@ -778,7 +774,7 @@ async def _do_reject(entity, target_id, token, company_id, user_id, first_name, 
             await broadcast_cart_update({"type": "rfq_rejected", "rfq_id": target_id})
 
         return _success_response(
-            f"❌ {label} **{show_id}** has been rejected.",
+            f"{label} {show_id} has been rejected.",
             suggestions=[f"View more {entity}s", "Back to menu"]
         )
     except ProcurementAPIError:
@@ -825,7 +821,7 @@ async def chat_endpoint(request: Request, message: Message):
 
     # ── Auth guard ──
     if not token:
-        return _text_response("🔒 Please log in to use the chatbot. I need your authentication to access the dashboard.")
+        return _text_response("Please log in to use the chatbot. I need your authentication to access the dashboard.")
 
     try:
         company_id = get_company_id_from_token(token)
@@ -833,6 +829,40 @@ async def chat_endpoint(request: Request, message: Message):
         first_name = get_user_first_name_from_token(token) or "User"
     except Exception:
         return _error_response("Authentication error. Please log in again.")
+
+    # ─────────────────────────────────────────────────
+    # 0a-pre. STRUCTURED BUTTON ID HANDLER
+    #   Intercepts raw button IDs sent from the frontend before intent parsing.
+    #   Button clicks send the button "id" field as text (e.g. "approve_reject",
+    #   "status") which the regex/LLM parser can misinterpret → loop.
+    # ─────────────────────────────────────────────────
+    _clean_text = lower_text.strip()
+
+    # "approve_reject" button — show pending approvals for current entity
+    if _clean_text == "approve_reject":
+        btn_entity = session.get("menu")
+        if btn_entity in ("cart", "po", "rfq"):
+            session["submenu"] = "approve"
+            session["page"] = 1
+            session["search"] = ""
+            try:
+                return await _build_list_response(
+                    btn_entity, "approve", token, company_id, str(user_id), 1, "", session
+                )
+            except (ProcurementAPIError, Exception) as e:
+                logger.warning(f"[BTN-APPROVE_REJECT] Error: {e}")
+                return _error_response("Failed to fetch items. Please try again.")
+        return _menu_response()
+
+    # "status" button — show status filter submenu for current entity
+    if _clean_text == "status":
+        btn_entity = session.get("menu")
+        if btn_entity in ("cart", "po", "rfq"):
+            session["submenu"] = "status"
+            session["page"] = 1
+            session["search"] = ""
+            return _status_filter_response(btn_entity)
+        return _menu_response()
 
     # ─────────────────────────────────────────────────
     # 0a. STATUS FILTER BUTTON — direct handler for status_filter:entity:STATUS
@@ -860,13 +890,13 @@ async def chat_endpoint(request: Request, message: Message):
                 return _text_response(f"No data found.")
 
     # ── Navigation shortcuts: "Back to last menu" / "Main menu" ──
-    if lower_text in ("⬅️ back to last menu", "back to last menu", "back", "go back", "previous menu", "last menu"):
+    if lower_text in ("back to last menu", "back", "go back", "previous menu", "last menu"):
         last_entity = session.get("menu")
         if last_entity and last_entity in ("cart", "po", "rfq"):
             return _submenu_response(last_entity)
         return _menu_response()
 
-    if lower_text in ("🏠 main menu", "main menu", "home", "start", "menu", "back to main"):
+    if lower_text in ("main menu", "home", "start", "menu", "back to main"):
         session["menu"] = None
         session["submenu"] = None
         session["page"] = 1
@@ -940,9 +970,12 @@ async def chat_endpoint(request: Request, message: Message):
                     detected_entity = _ENTITY_KEYWORDS[phrase]
                     break
 
-            # 3. Fallback: if no entity found, infer from status
+            # 3. Fallback: if no entity found, infer from status or session context
             if not detected_entity:
                 detected_entity = _STATUS_DEFAULT_ENTITY.get(matched_status_phrase)
+            # 4. Final fallback: use current session entity (e.g. user is in PO menu and types "submitted")
+            if not detected_entity and session.get("menu") in ("cart", "po", "rfq"):
+                detected_entity = session["menu"]
 
             if detected_entity:
                 # Resolve the correct API status value for this entity
@@ -965,6 +998,7 @@ async def chat_endpoint(request: Request, message: Message):
                         detected_entity, "status", token, company_id, str(user_id), 1, "", session, status_filter=api_status
                     )
                 except (ProcurementAPIError, Exception) as e:
+                    logger.error(f"[STATUS-NLP] Error fetching {detected_entity} status={api_status}: {e}", exc_info=True)
                     return _text_response(f"No data found.")
 
     # ─────────────────────────────────────────────────
@@ -1046,14 +1080,14 @@ async def chat_endpoint(request: Request, message: Message):
                 logger.error(f"[CONFIRM-FLOW] API error for {entity_label} {show_id}: {err_str}")
                 if "400" in err_str.lower() or "bad request" in err_str.lower():
                     return _text_response(
-                        f"❌ Could not {ca} {entity_label} **{show_id}**.\n\n"
+                        f"Could not {ca} {entity_label} **{show_id}**.\n\n"
                         f"The server rejected the request. This may mean the item's status has changed "
                         f"or you are not authorised for this action.\n\n"
                         "How else can I assist you?"
                     )
                 if "404" in err_str.lower() or "not found" in err_str.lower():
                     return _text_response(
-                        f"❌ {entity_label} **{show_id}** was not found on the server.\n\n"
+                        f"{entity_label} **{show_id}** was not found on the server.\n\n"
                         "How else can I assist you?"
                     )
                 return _error_response(f"Action failed: {e}")
@@ -1136,11 +1170,11 @@ async def chat_endpoint(request: Request, message: Message):
                     if alt_result:
                         return alt_result
                 return _text_response(
-                    f"❌ No matching record found for **{resolved_id}**.\n\n"
+                    f"No matching record found for **{resolved_id}**.\n\n"
                     "Try one of these:\n"
-                    "• **\"Show carts\"** → Browse all carts\n"
-                    "• **\"Show POs\"** → Browse all purchase orders\n"
-                    "• **\"Show RFQs\"** → Browse all RFQs"
+                    "- Show carts\n"
+                    "- Show POs\n"
+                    "- Show RFQs"
                 )
             except ProcurementAPIError as e:
                 return _error_response(f"Failed to load details: {e}")
@@ -1166,10 +1200,10 @@ async def chat_endpoint(request: Request, message: Message):
                         return str(v)
 
                     msg = (
-                        f"💰 **Budget Dashboard**\n\n"
-                        f"**Total Budget:** {fmt(total)}\n"
-                        f"**Used:** {fmt(used)} ({pct}%)\n"
-                        f"**Available:** {fmt(available)}\n"
+                        f"Budget Dashboard\n\n"
+                        f"Total Budget: {fmt(total)}\n"
+                        f"Used: {fmt(used)} ({pct}%)\n"
+                        f"Available: {fmt(available)}\n"
                     )
                     return _text_response(msg)
                 except ProcurementAPIError as e:
@@ -1202,11 +1236,11 @@ async def chat_endpoint(request: Request, message: Message):
 
             # Not found anywhere
             return _text_response(
-                f"❌ No matching record found for **{target_id}**.\n\n"
+                f"No matching record found for **{target_id}**.\n\n"
                 "Try one of these:\n"
-                "• **\"Show carts\"** → Browse all carts\n"
-                "• **\"Show POs\"** → Browse all purchase orders\n"
-                "• **\"Show RFQs\"** → Browse all RFQs"
+                "- Show carts\n"
+                "- Show POs\n"
+                "- Show RFQs"
             )
         except ProcurementAPIError as e:
             return _error_response(f"Failed to load details: {e}")
@@ -1215,7 +1249,7 @@ async def chat_endpoint(request: Request, message: Message):
     # 5. SUBMENU SELECTION (approve_menu / reject_menu / status)
     #    If status has a target_id, redirect to view_detail
     # ─────────────────────────────────────────────────
-    if action in ("approve_menu", "reject_menu", "status"):
+    if action in ("approve_menu", "reject_menu", "approve_reject", "status"):
         # If status with a specific ID, show only that item (not a list)
         if action == "status" and target_id:
             target_entity = entity or session.get("menu") or "cart"
@@ -1234,11 +1268,11 @@ async def chat_endpoint(request: Request, message: Message):
 
                 # Not found anywhere
                 return _text_response(
-                    f"❌ No matching record found for **{target_id}**.\n\n"
+                    f"No matching record found for **{target_id}**.\n\n"
                     "Try one of these:\n"
-                    "• **\"Show carts\"** → Browse all carts\n"
-                    "• **\"Show POs\"** → Browse all purchase orders\n"
-                    "• **\"Show RFQs\"** → Browse all RFQs"
+                    "- Show carts\n"
+                    "- Show POs\n"
+                    "- Show RFQs"
                 )
             except ProcurementAPIError as e:
                 return _error_response(f"Failed to load details: {e}")
@@ -1247,7 +1281,11 @@ async def chat_endpoint(request: Request, message: Message):
         if not target_entity:
             return _menu_response()
 
-        submenu_key = action.replace("_menu", "") if action.endswith("_menu") else action
+        # Map approve_reject → use "approve" submenu key (frontend shows both ✓ and ✗ buttons)
+        if action == "approve_reject":
+            submenu_key = "approve"
+        else:
+            submenu_key = action.replace("_menu", "") if action.endswith("_menu") else action
         session["menu"] = target_entity
         session["submenu"] = submenu_key
         session["page"] = 1
@@ -1280,7 +1318,7 @@ async def chat_endpoint(request: Request, message: Message):
 
         if not found:
             return _text_response(
-                f"❌ {entity_label} **{target_id}** was not found.\n\n"
+                f"{entity_label} {target_id} was not found.\n\n"
                 "Please check the number and try again. How else can I assist you?"
             )
 
@@ -1288,7 +1326,7 @@ async def chat_endpoint(request: Request, message: Message):
             # Item exists in the system but is NOT in the current user's approval queue
             status_display = f" (current status: **{status}**)" if status else ""
             return _text_response(
-                f"⚠️ {entity_label} **{target_id}**{status_display} is not in your approval queue.\n\n"
+                f"{entity_label} {target_id}{status_display} is not in your approval queue.\n\n"
                 f"Only assigned approvers can {action_label} this {entity_label.lower()}.\n\n"
                 "How else can I assist you?"
             )
@@ -1300,8 +1338,8 @@ async def chat_endpoint(request: Request, message: Message):
             "submitted", "requested", "pending_approval",
         ):
             return _text_response(
-                f"⚠️ {entity_label} **{target_id}** cannot be {action_label}d — "
-                f"its current status is **{status}**.\n\n"
+                f"{entity_label} {target_id} cannot be {action_label}d — "
+                f"its current status is {status}.\n\n"
                 "How else can I assist you?"
             )
 
@@ -1316,7 +1354,7 @@ async def chat_endpoint(request: Request, message: Message):
                 "rfq_signoff_user_id": rfq_signoff_user_id,
             }
             return _reject_reason_response(
-                f"📝 Please provide a **reason** for rejecting {entity_label} **{target_id}**:",
+                f"Please provide a reason for rejecting {entity_label} {target_id}:",
                 {
                     "entity": target_entity,
                     "target_id": target_id,
@@ -1461,28 +1499,28 @@ async def chat_endpoint(request: Request, message: Message):
 
         suggestions = {
             "cart": (
-                f"🚫 I'm not able to **{verb}** a {entity_label} at the moment.\n\n"
-                "Here's what I **can** do with Carts:\n"
-                "• **\"Show carts\"** → View all your carts\n"
-                "• **\"Cart status\"** followed by a cart number → View a specific cart\n"
-                "• **\"Approve cart\"** followed by a cart number → Approve a cart\n"
-                "• **\"Reject cart\"** followed by a cart number → Reject a cart"
+                f"I'm not able to {verb} a {entity_label} at the moment.\n\n"
+                "Here's what I can do with Carts:\n"
+                "- Show carts to view all your carts\n"
+                "- Cart status followed by a cart number to view a specific cart\n"
+                "- Approve cart followed by a cart number to approve a cart\n"
+                "- Reject cart followed by a cart number to reject a cart"
             ),
             "po": (
-                f"🚫 I'm not able to **{verb}** a {entity_label} at the moment.\n\n"
-                "Here's what I **can** do with POs:\n"
-                "• **\"Show POs\"** → View all purchase orders\n"
-                "• **\"PO status\"** followed by a PO number → View a specific PO\n"
-                "• **\"Approve PO\"** followed by a PO number → Approve a PO\n"
-                "• **\"Reject PO\"** followed by a PO number → Reject a PO"
+                f"I'm not able to {verb} a {entity_label} at the moment.\n\n"
+                "Here's what I can do with POs:\n"
+                "- Show POs to view all purchase orders\n"
+                "- PO status followed by a PO number to view a specific PO\n"
+                "- Approve PO followed by a PO number to approve a PO\n"
+                "- Reject PO followed by a PO number to reject a PO"
             ),
             "rfq": (
-                f"🚫 I'm not able to **{verb}** an {entity_label} at the moment.\n\n"
-                "Here's what I **can** do with RFQs:\n"
-                "• **\"Show RFQs\"** → View all quotations\n"
-                "• **\"RFQ status\"** followed by an RFQ number → View a specific RFQ\n"
-                "• **\"Approve RFQ\"** followed by an RFQ number → Approve an RFQ\n"
-                "• **\"Reject RFQ\"** followed by an RFQ number → Reject an RFQ"
+                f"I'm not able to {verb} an {entity_label} at the moment.\n\n"
+                "Here's what I can do with RFQs:\n"
+                "- Show RFQs to view all quotations\n"
+                "- RFQ status followed by an RFQ number to view a specific RFQ\n"
+                "- Approve RFQ followed by an RFQ number to approve an RFQ\n"
+                "- Reject RFQ followed by an RFQ number to reject an RFQ"
             ),
         }
         return _text_response(suggestions.get(entity_key, suggestions["cart"]))
@@ -1499,20 +1537,22 @@ async def chat_endpoint(request: Request, message: Message):
     if action is None or (action == "navigate" and not entity):
         # Completely unrecognized — show friendly help with examples
         return _text_response(
-            "🤔 I didn't quite understand that. Here's what I can help with:\n\n"
-            "**📋 Browse:**\n"
-            "• **\"Cart\"** / **\"PO\"** / **\"RFQ\"** → Open menu\n"
-            "• **\"Show carts\"** → View all carts\n\n"
-            "**🔍 Lookup:**\n"
-            "• **\"Cart status\"** + number → View a specific cart\n"
-            "• **\"PO status\"** → View all POs\n\n"
-            "**✅ Actions:**\n"
-            "• **\"Approve cart\"** + number → Approve a cart\n"
-            "• **\"Reject PO\"** + number → Reject a PO\n\n"
-            "**💰 Other:**\n"
-            "• **\"Budget\"** → View budget dashboard\n"
-            "• **\"Raise ticket\"** → Submit support ticket\n"
-            "• **\"Help\"** → See all commands"
+            "I didn't quite understand that. Here's what I can help with:\n\n"
+            "**Browse:**\n"
+            "Navigation:\n"
+            "- Cart, PO, or RFQ to open that menu\n"
+            "- Back to go up one level\n"
+            "- Main menu to return to the start\n\n"
+            "View status:\n"
+            "- Cart status + number to view a specific cart\n"
+            "- PO status to view all POs\n\n"
+            "Actions:\n"
+            "- Approve cart + number to approve a cart\n"
+            "- Reject PO + number to reject a PO\n\n"
+            "Other:\n"
+            "- Budget to view budget dashboard\n"
+            "- Raise ticket to submit support ticket\n"
+            "- Help to see all commands"
         )
 
     # Final fallback — show main menu
@@ -1566,10 +1606,10 @@ async def submit_ticket(request: Request):
     logger.info(f"[Ticket] Created {ticket_id}: {subject} ({priority})")
 
     return _success_response(
-        f"✅ Ticket **{ticket_id}** has been raised successfully!\n\n"
-        f"**Subject:** {subject}\n"
-        f"**Priority:** {priority}\n"
-        f"**Status:** Open\n\n"
+        f"Ticket {ticket_id} has been raised successfully.\n\n"
+        f"Subject: {subject}\n"
+        f"Priority: {priority}\n"
+        f"Status: Open\n\n"
         f"Our support team will get back to you shortly.",
         suggestions=["Back to menu"]
     )

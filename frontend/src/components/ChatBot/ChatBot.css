@@ -758,6 +758,20 @@
   color: #1e40af !important;
 }
 
+/* ── Clickable cart/entity number links ── */
+.cb-cart-link {
+  color: #1e40af !important;
+  text-decoration: underline !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+  transition: color 0.15s ease !important;
+}
+
+.cb-cart-link:hover {
+  color: #1e3a8a !important;
+  text-decoration: underline !important;
+}
+
 .cb-item-status {
   font-size: 10px !important;
   font-weight: 600 !important;
@@ -804,6 +818,27 @@
 .cb-action-approve:hover {
   background: #dcfce7 !important;
   border-color: #4ade80 !important;
+  transform: scale(1.02) !important;
+}
+
+.cb-action-reject {
+  display: flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+  padding: 5px 12px !important;
+  border-radius: 6px !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  cursor: pointer !important;
+  border: 1.5px solid #fca5a5 !important;
+  background: #fff1f2 !important;
+  color: #991b1b !important;
+  transition: all 0.2s ease !important;
+}
+
+.cb-action-reject:hover {
+  background: #fee2e2 !important;
+  border-color: #f87171 !important;
   transform: scale(1.02) !important;
 }
 
@@ -1057,9 +1092,9 @@
   justify-content: center !important;
   gap: 6px !important;
   padding: 10px 16px !important;
-  background: white !important;
-  color: #374151 !important;
-  border: 1.5px solid #e5e7eb !important;
+  background: #fff1f2 !important;
+  color: #991b1b !important;
+  border: 1.5px solid #fca5a5 !important;
   border-radius: 10px !important;
   font-size: 13px !important;
   font-weight: 600 !important;
@@ -1068,8 +1103,8 @@
 }
 
 .cb-confirm-no:hover {
-  background: #f3f4f6 !important;
-  border-color: #d1d5db !important;
+  background: #fee2e2 !important;
+  border-color: #f87171 !important;
 }
 
 /* ═══════════════════════════════════════════════════════ */
@@ -1144,9 +1179,9 @@
   align-items: center !important;
   gap: 4px !important;
   padding: 5px 12px !important;
-  background: white !important;
-  color: #374151 !important;
-  border: 1.5px solid #d1d5db !important;
+  background: #fff1f2 !important;
+  color: #991b1b !important;
+  border: 1.5px solid #fca5a5 !important;
   border-radius: 6px !important;
   font-size: 11px !important;
   font-weight: 600 !important;
@@ -1155,8 +1190,8 @@
 }
 
 .cb-confirm-no:hover {
-  background: #f3f4f6 !important;
-  border-color: #9ca3af !important;
+  background: #fee2e2 !important;
+  border-color: #f87171 !important;
 }
 
 .cb-suggestions {
@@ -1191,6 +1226,108 @@
 .cb-suggestion-btn:active {
   transform: translateY(0) scale(0.98) !important;
   box-shadow: 0 1px 3px rgba(37, 99, 235, 0.3) !important;
+}
+
+/* ═══════════════════════════════════════════════════════ */
+/* COMPACT APPROVAL TABLE (Approve/Reject view)            */
+/* ═══════════════════════════════════════════════════════ */
+
+.cb-approval-table {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 3px !important;
+  margin-top: 4px !important;
+  border: 1.5px solid #e5e7eb !important;
+  border-radius: 8px !important;
+  overflow: hidden !important;
+}
+
+.cb-approval-row {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  padding: 4px 8px !important;
+  background: #ffffff !important;
+  border-bottom: 1px solid #e5e7eb !important;
+  transition: background 0.15s ease !important;
+  min-height: 28px !important;
+}
+
+.cb-approval-row:last-child {
+  border-bottom: none !important;
+}
+
+.cb-approval-row:hover {
+  background: #f9fafb !important;
+}
+
+.cb-approval-label {
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  color: #1e40af !important;
+  flex: 1 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  padding-right: 6px !important;
+}
+
+.cb-approval-btns {
+  display: flex !important;
+  gap: 4px !important;
+  flex-shrink: 0 !important;
+}
+
+.cb-approval-btn-approve {
+  height: 24px !important;
+  min-width: 48px !important;
+  padding: 0 10px !important;
+  border-radius: 5px !important;
+  border: none !important;
+  background: linear-gradient(135deg, #22c55e, #16a34a) !important;
+  color: white !important;
+  cursor: pointer !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 4px !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  white-space: nowrap !important;
+  transition: all 0.2s ease !important;
+  box-shadow: 0 1px 2px rgba(34, 197, 94, 0.4) !important;
+}
+
+.cb-approval-btn-approve:hover {
+  background: linear-gradient(135deg, #16a34a, #15803d) !important;
+  transform: scale(1.1) !important;
+  box-shadow: 0 2px 6px rgba(34, 197, 94, 0.5) !important;
+}
+
+.cb-approval-btn-reject {
+  height: 24px !important;
+  min-width: 48px !important;
+  padding: 0 10px !important;
+  border-radius: 5px !important;
+  border: none !important;
+  background: linear-gradient(135deg, #ef4444, #dc2626) !important;
+  color: white !important;
+  cursor: pointer !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 4px !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  white-space: nowrap !important;
+  transition: all 0.2s ease !important;
+  box-shadow: 0 1px 2px rgba(239, 68, 68, 0.4) !important;
+}
+
+.cb-approval-btn-reject:hover {
+  background: linear-gradient(135deg, #dc2626, #b91c1c) !important;
+  transform: scale(1.1) !important;
+  box-shadow: 0 2px 6px rgba(239, 68, 68, 0.5) !important;
 }
 
 /* ═══════════════════════════════════════════════════════ */

@@ -16,7 +16,7 @@ from config.constants import AUTH_API_BASE_URL
 
 logger = logging.getLogger(__name__)
 
-PAGE_SIZE = 5  # Show only 5 most recent items
+PAGE_SIZE = 10  # Show up to 10 most recent items
 
 
 class ProcurementAPIError(Exception):
@@ -388,6 +388,7 @@ async def get_pos_paginated(
             "totalItems": len(filtered),
         }
     else:
+        url = f"{AUTH_API_BASE_URL}/company/{company_id}/purchaseOrder"
         params = {
             "pageSize": PAGE_SIZE,
             "pageNumber": page - 1,
@@ -453,6 +454,25 @@ async def reject_po(
         "user": {"userId": uid, "firstName": first_name},
         "documentId": "",
     })
+
+
+async def get_po_by_order_number(
+    token: str, company_id: int, order_number: str,
+) -> dict:
+    """Search POs by purchaseOrderNo (display number like 'PO-1635' or '1635').
+    Mirrors the dashboard's getPoByOrderNumber."""
+    url = f"{AUTH_API_BASE_URL}/company/{company_id}/purchaseOrder"
+    # Try with the number as-is first, then with PO- prefix
+    for search_val in [order_number, f"PO-{order_number}"]:
+        data = await _request("GET", url, token=token, params={
+            "purchaseOrderNo": search_val,
+            "pageSize": 10,
+            "pageNumber": 0,
+        })
+        items = data.get("content") or data.get("data") or (data if isinstance(data, list) else [])
+        if items:
+            return {"items": items, "totalPages": 1, "currentPage": 1, "totalItems": len(items)}
+    return {"items": [], "totalPages": 1, "currentPage": 1, "totalItems": 0}
 
 
 async def get_pos_by_status(
