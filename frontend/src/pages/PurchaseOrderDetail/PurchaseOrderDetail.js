@@ -9,7 +9,13 @@ import { useParams, useNavigate } from 'react-router-dom';
 import Rating from 'react-rating';
 import PurchaseOrderService from '../../services/PurchaseOrderService';
 import ApprovalPolicyManagementService from '../../services/ApprovalPolicyManagementService';
-import { getEntityId, getUserId, getUserName, getUserRole } from '../localStorageUtil';
+import { getEntityId, getUserId, getUserName, getUserRole, formatCurrency, getCompanyCurrency, getCurrencySymbol } from '../localStorageUtil';
+import {
+  formatDualCurrency,
+  formatDualCurrencyTotal,
+  getUserType,
+  convertCurrency,
+} from '../../utils/currencyUtils';
 import CompanyService from '../../services/CompanyService';
 import FileUploadService from '../../services/FileUploadService';
 import ApprovalsService from '../../services/ApprovalsService';
@@ -78,31 +84,24 @@ const PurchaseOrderDetail = () => {
   const [showConfirmationModal, setShowConfirmationModal] = useState(false);
   const [pendingNavigation, setPendingNavigation] = useState(null);
   const [originalPOAmount, setOriginalPOAmount] = useState(0);
+  // Real-time converted prices for edited items
+  const [convertedPrices, setConvertedPrices] = useState({});
 
   // Budget validation state
   const [showBudgetValidation, setShowBudgetValidation] = useState(false);
   const [budgetValidationPOItems, setBudgetValidationPOItems] = useState(null);
+
+  // Company-side confirmation state (for draft suppliers)
+  const [showOrderConfirmModal, setShowOrderConfirmModal] = useState(false);
+  const [confirmQuantities, setConfirmQuantities] = useState({});
+  const [isConfirming, setIsConfirming] = useState(false);
 
   // Forward declarations to resolve hoisting issues
   let fetchPurchaseOrder;
   let handleApprove;
   let fetchApprovals;
 
-  // Enhanced currency formatting function
-  const formatCurrency = (amount, currency = 'USD') => {
-    if (amount == null || Number.isNaN(Number(amount))) {
-      return currency === 'USD' ? '$0.00' : `${currency} 0.00`;
-    }
-
-    const formatter = new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency,
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
-
-    return formatter.format(Number(amount));
-  };
+  // formatCurrency is imported from localStorageUtil and uses company currency
 
   // Helper function to check if PO is editable
   const isPOEditable = () => {
@@ -122,6 +121,148 @@ const PurchaseOrderDetail = () => {
     return Object.values(localPOChanges).some(changes =>
       changes.quantity !== undefined || changes.unitPrice !== undefined
     );
+  };
+
+  // Check if supplier is a draft (internal) supplier
+  const isDraftSupplier = () => {
+    return purchaseOrder?.supplier?.supplierStatus === 'draft';
+  };
+
+  // Check if PO is in a status that can be confirmed
+  const canBeConfirmed = () => {
+    const confirmableStatuses = ['APPROVED', 'SUBMITTED', 'PARTIALLY_CONFIRMED'];
+    return confirmableStatuses.includes(purchaseOrder?.orderStatus);
+  };
+
+  // Check if there are items remaining to be confirmed
+  const hasItemsToConfirm = () => {
+    return purchaseOrder?.orderItemDetails?.some((item) => {
+      if (!item.isActive) return false;
+      const remaining = Math.max(0, (item.quantity || 0) - (item.quantityConfirmed || 0));
+      return remaining > 0;
+    });
+  };
+
+  // Check if company user can confirm this order (draft supplier + confirmable status + items to confirm)
+  const canCompanyConfirmOrder = () => {
+    return isDraftSupplier() && canBeConfirmed() && hasItemsToConfirm();
+  };
+
+  // Initialize confirmation quantities when modal opens
+  const initializeConfirmQuantities = () => {
+    const quantities = {};
+    purchaseOrder?.orderItemDetails?.forEach((item) => {
+      if (!item.isActive) return;
+      const remaining = Math.max(0, (item.quantity || 0) - (item.quantityConfirmed || 0));
+      quantities[item.purchaseOrderDetailId] = remaining;
+    });
+    setConfirmQuantities(quantities);
+  };
+
+  // Handle confirm quantity change
+  const handleConfirmQuantityChange = (e, itemId, maxRemaining) => {
+    const { value } = e.target;
+    const inputQty = parseInt(value, 10) || 0;
+
+    // Validate: cannot exceed remaining quantity
+    if (inputQty > maxRemaining) {
+      toast.warning(`Cannot confirm more than ${maxRemaining} units for this item.`);
+      setConfirmQuantities(prev => ({
+        ...prev,
+        [itemId]: maxRemaining,
+      }));
+    } else if (inputQty < 0) {
+      setConfirmQuantities(prev => ({
+        ...prev,
+        [itemId]: 0,
+      }));
+    } else {
+      setConfirmQuantities(prev => ({
+        ...prev,
+        [itemId]: inputQty,
+      }));
+    }
+  };
+
+  // Confirm all remaining quantities
+  const handleConfirmAll = () => {
+    const quantities = {};
+    purchaseOrder?.orderItemDetails?.forEach((item) => {
+      if (!item.isActive) return;
+      const remaining = Math.max(0, (item.quantity || 0) - (item.quantityConfirmed || 0));
+      quantities[item.purchaseOrderDetailId] = remaining;
+    });
+    setConfirmQuantities(quantities);
+  };
+
+  // Handle order confirmation submission
+  const handleConfirmOrderSubmit = async () => {
+    // Filter items that have quantities to confirm
+    const itemsToConfirm = purchaseOrder?.orderItemDetails?.filter((item) => {
+      const confirmQty = confirmQuantities[item.purchaseOrderDetailId] || 0;
+      return confirmQty > 0 && item.isActive;
+    });
+
+    if (!itemsToConfirm || itemsToConfirm.length === 0) {
+      toast.warning('Please enter at least one quantity to confirm.');
+      return;
+    }
+
+    setIsConfirming(true);
+
+    try {
+      const confirmationData = {
+        confirmationDate: new Date().toISOString(),
+        estimatedDate: new Date().toISOString(),
+        company: {
+          companyId: purchaseOrder.company?.companyId || companyId,
+          name: purchaseOrder.company?.name || purchaseOrder.company?.displayName || 'Company',
+          displayName: purchaseOrder.company?.displayName || purchaseOrder.company?.name || 'Company',
+        },
+        purchaseOrder: {
+          purchaseOrderId: Number(purchaseOrderId),
+          orderNo: purchaseOrder.orderNo,
+        },
+        supplier: {
+          supplierId: purchaseOrder.supplier?.supplierId,
+          name: purchaseOrder.supplier?.name || purchaseOrder.supplier?.displayName || 'Supplier',
+          displayName: purchaseOrder.supplier?.displayName || purchaseOrder.supplier?.name || 'Supplier',
+        },
+        notes: 'Confirmed by company user (draft supplier)',
+        isActive: true,
+        orderItemDetails: itemsToConfirm.map((item) => ({
+          purchaseOrderDetail: {
+            purchaseOrderDetailId: item.purchaseOrderDetailId,
+            partId: item.partId || 'N/A',
+            partDescription: item.partDescription || 'N/A',
+          },
+          qtyConfirmed: confirmQuantities[item.purchaseOrderDetailId] || 0,
+          isActive: true,
+        })),
+      };
+
+      await PurchaseOrderService.confirmPurchaseOrderAsCompany(
+        companyId,
+        purchaseOrderId,
+        confirmationData,
+      );
+
+      toast.success('Order confirmed successfully!');
+      setShowOrderConfirmModal(false);
+
+      // Refresh the purchase order data
+      if (fetchPurchaseOrder) {
+        fetchPurchaseOrder(0, purchaseOrderId);
+      }
+    } catch (error) {
+      console.error('Error confirming order:', error);
+      const errorMessage = error.response?.data?.message ||
+        error.response?.data?.error ||
+        'Failed to confirm order. Please try again.';
+      toast.error(errorMessage);
+    } finally {
+      setIsConfirming(false);
+    }
   };
 
   // Handle local field changes for editable fields
@@ -164,6 +305,30 @@ const PurchaseOrderDetail = () => {
 
       return currentChanges;
     });
+
+    // Trigger real-time currency conversion for unit price changes
+    if (field === 'unitPrice' && value !== '' && !Number.isNaN(parseFloat(value))) {
+      const fromCurrency = originalItem.originalCurrencyCode || getCompanyCurrency();
+      const toCurrency = originalItem.convertedCurrencyCode || getCompanyCurrency();
+
+      // Only convert if currencies are different
+      if (fromCurrency && toCurrency && fromCurrency !== toCurrency) {
+        convertCurrency(parseFloat(value), fromCurrency, toCurrency)
+          .then((result) => {
+            setConvertedPrices(prev => ({
+              ...prev,
+              [orderItemId]: {
+                convertedUnitPrice: result.convertedAmount,
+                rate: result.rate,
+                rateDate: result.rateDate,
+              },
+            }));
+          })
+          .catch((error) => {
+            console.error('Currency conversion error:', error);
+          });
+      }
+    }
   };
 
   // Get display value (local change or original)
@@ -260,16 +425,62 @@ const PurchaseOrderDetail = () => {
         const updatePromises = [];
         Object.entries(localPOChanges).forEach(([itemId, changes]) => {
           if (Object.keys(changes).length > 0) {
-            updatePromises.push(
-              PurchaseOrderService.updateOrderItem(companyId, purchaseOrderId, itemId, changes)
+            const updatedChanges = { ...changes };
+
+            // Find the original item
+            const originalItem = purchaseOrder?.orderItemDetails?.find(item =>
+              (item.purchaseOrderDetailId || item.orderItemId) === parseInt(itemId, 10)
             );
+
+            if (originalItem) {
+              // Get effective quantity and unit price
+              const qty = changes.quantity ?? originalItem.quantity ?? 1;
+              const unitPrice = changes.unitPrice ?? originalItem.unitPrice ?? 0;
+
+              // Always calculate itemTotal when quantity or unitPrice changes
+              if (changes.quantity !== undefined || changes.unitPrice !== undefined) {
+                updatedChanges.itemTotal = unitPrice * qty;
+                // Also update original currency fields (unitPrice is in original/supplier currency)
+                updatedChanges.originalUnitPrice = unitPrice;
+                updatedChanges.originalItemTotal = unitPrice * qty;
+              }
+
+              // Include converted prices
+              if (changes.unitPrice !== undefined) {
+                // Unit price changed - need to recalculate converted values
+                if (convertedPrices[itemId]) {
+                  // Use real-time conversion from API
+                  updatedChanges.convertedUnitPrice = convertedPrices[itemId].convertedUnitPrice;
+                  updatedChanges.conversionRate = convertedPrices[itemId].rate;
+                  updatedChanges.convertedItemTotal = convertedPrices[itemId].convertedUnitPrice * qty;
+                } else if (originalItem.conversionRate && originalItem.conversionRate !== 1) {
+                  // Fallback: use existing conversion rate to calculate converted values
+                  const convertedUnitPrice = unitPrice * originalItem.conversionRate;
+                  updatedChanges.convertedUnitPrice = convertedUnitPrice;
+                  updatedChanges.conversionRate = originalItem.conversionRate;
+                  updatedChanges.convertedItemTotal = convertedUnitPrice * qty;
+                  console.log('⚠️ Using fallback conversion rate:', originalItem.conversionRate);
+                }
+              } else if (changes.quantity !== undefined && originalItem.convertedUnitPrice) {
+                // If only quantity changed, recalculate converted total using existing converted unit price
+                updatedChanges.convertedItemTotal = originalItem.convertedUnitPrice * qty;
+              }
+            }
+
+            console.log(`📝 Update item ${itemId}:`, updatedChanges);
+            updatePromises.push({ itemId, updatedChanges });
           }
         });
 
         if (updatePromises.length > 0) {
-          // Execute all updates
-          await Promise.all(updatePromises);
-          console.log('✅ Order items updated successfully');
+          // Execute updates SEQUENTIALLY to ensure proper PO total recalculation
+          // Each update triggers a recalculation, so they must run one after another
+          // to see each other's committed changes
+          for (const { itemId, updatedChanges } of updatePromises) {
+            console.log(`⏳ Updating item ${itemId}...`);
+            await PurchaseOrderService.updateOrderItem(companyId, purchaseOrderId, itemId, updatedChanges);
+          }
+          console.log('✅ All order items updated successfully (PO total recalculated by backend)');
 
           // Trigger reapproval if user confirmed
           if (shouldTriggerReapproval) {
@@ -299,6 +510,7 @@ const PurchaseOrderDetail = () => {
 
           // Reset local changes
           setLocalPOChanges({});
+          setConvertedPrices({});
           setHasUnsavedChanges(false);
 
           // Refresh the purchase order data
@@ -316,6 +528,7 @@ const PurchaseOrderDetail = () => {
   // Handle cancel changes
   const handleCancelChanges = () => {
     setLocalPOChanges({});
+    setConvertedPrices({});
     setHasUnsavedChanges(false);
     toast.info('Changes discarded');
   };
@@ -363,19 +576,34 @@ const PurchaseOrderDetail = () => {
   };
 
   // Memoize PO items to prevent infinite loops in BudgetValidationPreview (like CartDetails)
+  // IMPORTANT: Use converted price (company currency) for budget validation since budgets are in company currency
   const memoizedPOItems = useMemo(() => {
     if (!purchaseOrder?.orderItemDetails) return [];
 
     return purchaseOrder.orderItemDetails.map(item => {
+      const itemId = item.purchaseOrderDetailId || item.orderItemId;
       // Get current values (local changes or original)
       const currentQty = getNumericValue(item, 'quantity');
-      const currentPrice = getNumericValue(item, 'unitPrice');
-      const totalPrice = currentQty * currentPrice;
+
+      // For budget validation, use CONVERTED price (company currency) since budgets are in company currency
+      // Priority: real-time converted price > item's converted price > original price (same currency fallback)
+      const realtimeConverted = convertedPrices[itemId];
+      const localChanges = localPOChanges[itemId] || {};
+      let effectivePrice;
+      if (localChanges.unitPrice !== undefined) {
+        // User changed price - use real-time converted price if available
+        effectivePrice = realtimeConverted?.convertedPrice ?? localChanges.unitPrice;
+      } else {
+        // No local change - use item's converted price if available, else original price
+        effectivePrice = item.convertedUnitPrice ?? item.unitPrice ?? 0;
+      }
+
+      const totalPrice = currentQty * effectivePrice;
 
       return {
-        id: item.purchaseOrderDetailId || item.orderItemId,
+        id: itemId,
         quantity: currentQty,
-        unitPrice: currentPrice,
+        unitPrice: effectivePrice,
         totalPrice,
         description: getDisplayValue(item, 'partDescription') || item.partDescription || item.catalogItem?.Description || 'PO item',
         partId: item.partId || item.catalogItem?.PartId || '',
@@ -386,7 +614,7 @@ const PurchaseOrderDetail = () => {
         locationId: item.location?.locationId || item.locationId || null
       };
     });
-  }, [purchaseOrder, localPOChanges]);
+  }, [purchaseOrder, localPOChanges, convertedPrices]);
 
 
   const handleRateSupplier = () => {
@@ -1252,7 +1480,27 @@ const PurchaseOrderDetail = () => {
                   <div className="info-item">
                     <div className="text-muted" style={{ fontSize: '12px', marginBottom: '4px' }}>Order Amount</div>
                     <div style={{ fontSize: '16px', fontWeight: '700', color: hasUnsavedChanges ? '#ffc107' : '#28a745' }}>
-                      {purchaseOrder ? formatCurrency(calculateCurrentPOTotal()) : 'N/A'}
+                      {purchaseOrder ? (() => {
+                        // Calculate real-time totals when there are unsaved changes
+                        const currentTotal = calculateCurrentPOTotal();
+                        const currentConvertedTotal = purchaseOrder.orderItemDetails?.reduce((total, item) => {
+                          const itemId = item.purchaseOrderDetailId || item.orderItemId;
+                          const currentQty = getNumericValue(item, 'quantity');
+                          const realtimeConverted = convertedPrices[itemId];
+                          const convertedUnitPrice = realtimeConverted?.convertedUnitPrice ?? item.convertedUnitPrice ?? 0;
+                          return total + (currentQty * convertedUnitPrice);
+                        }, 0) || 0;
+
+                        return formatDualCurrency(
+                          {
+                            originalPrice: hasUnsavedChanges ? currentTotal : (purchaseOrder.originalOrderAmount || purchaseOrder.orderAmount || 0),
+                            originalCurrency: purchaseOrder.originalCurrencyCode || getCompanyCurrency(),
+                            convertedPrice: hasUnsavedChanges ? currentConvertedTotal : purchaseOrder.convertedOrderAmount,
+                            convertedCurrency: purchaseOrder.convertedCurrencyCode,
+                          },
+                          getUserType()
+                        );
+                      })() : 'N/A'}
                       {hasUnsavedChanges && (
                         <small className="d-block text-muted" style={{ fontSize: '10px', fontWeight: '400' }}>
                           Original: {formatCurrency(purchaseOrder?.orderAmount || 0)}
@@ -1471,15 +1719,23 @@ const PurchaseOrderDetail = () => {
               </button>
               <button
                 type="button"
-                className="btn btn-secondary btn-sm"
-                disabled
+                className={`btn btn-sm ${canCompanyConfirmOrder() ? 'btn-success' : 'btn-secondary'}`}
+                disabled={!canCompanyConfirmOrder()}
+                onClick={() => {
+                  initializeConfirmQuantities();
+                  setShowOrderConfirmModal(true);
+                }}
+                title={isDraftSupplier()
+                  ? (canCompanyConfirmOrder() ? 'Confirm order quantities' : 'No items remaining to confirm')
+                  : 'Only available for draft (internal) suppliers'
+                }
                 style={{
                   borderRadius: '6px',
                   padding: '8px 16px',
                   fontSize: '13px',
                   fontWeight: '500',
                   minWidth: '120px',
-                  opacity: 0.6
+                  opacity: canCompanyConfirmOrder() ? 1 : 0.6
                 }}
               >
                 <i className="bi bi-check-circle me-1"></i>
@@ -1614,6 +1870,11 @@ const PurchaseOrderDetail = () => {
                   <i className="bi bi-building me-2" style={{ color: '#009efb', fontSize: '18px' }}></i>
                   <h6 className="mb-0" style={{ color: '#009efb', fontWeight: '600' }}>
                     {purchaseOrder.supplier?.displayName || purchaseOrder.supplier?.name || 'Supplier'}
+                    {purchaseOrder.supplier?.supplierStatus === 'draft' && (
+                      <Badge color="warning" className="ms-2" style={{ fontSize: '10px', fontWeight: '500' }}>
+                        Internal
+                      </Badge>
+                    )}
                   </h6>
                 </div>
                 <div className="d-flex align-items-center gap-3">
@@ -1626,9 +1887,24 @@ const PurchaseOrderDetail = () => {
                   <div className="d-flex align-items-center gap-2">
                     <span className="text-muted" style={{ fontSize: '13px' }}>Value:</span>
                     <span className="fw-bold" style={{ color: '#198754', fontSize: '14px' }}>
-                      ${purchaseOrder.orderItemDetails
-                        .reduce((sum, item) => sum + (item.quantity && item.unitPrice ? item.quantity * item.unitPrice : 0), 0)
-                        .toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      {formatDualCurrencyTotal(
+                        purchaseOrder.orderItemDetails.map((item) => {
+                          const itemId = item.purchaseOrderDetailId || item.orderItemId;
+                          const currentPrice = getNumericValue(item, 'unitPrice');
+                          const currentQty = getNumericValue(item, 'quantity');
+                          // Use real-time converted price if available
+                          const realtimeConverted = convertedPrices[itemId];
+                          const convertedUnitPrice = realtimeConverted?.convertedUnitPrice ?? item.convertedUnitPrice;
+                          return {
+                            originalPrice: currentPrice,
+                            originalCurrencyCode: item.originalCurrencyCode,
+                            convertedPrice: convertedUnitPrice,
+                            convertedCurrencyCode: item.convertedCurrencyCode,
+                            quantity: currentQty,
+                          };
+                        }),
+                        getUserType()
+                      )}
                     </span>
                   </div>
                 </div>
@@ -1773,42 +2049,77 @@ const PurchaseOrderDetail = () => {
                             <div className="d-flex align-items-center">
                               <span className="text-muted me-2" style={{ fontSize: '13px', minWidth: '80px' }}>Unit Price:</span>
                               {isPOEditable() ? (
-                                <Input
-                                  type="number"
-                                  step="0.01"
-                                  min="0"
-                                  value={getDisplayValue(item, 'unitPrice') ?? ''}
-                                  onChange={(e) => {
-                                    const { value } = e.target;
-                                    if (value === '') {
-                                      handleLocalFieldChange(item.purchaseOrderDetailId, 'unitPrice', '');
-                                    } else {
-                                      const numValue = parseFloat(value);
-                                      if (!Number.isNaN(numValue)) {
-                                        handleLocalFieldChange(item.purchaseOrderDetailId, 'unitPrice', numValue);
+                                <>
+                                  <span style={{ fontSize: '13px', color: '#000', marginRight: '2px' }}>
+                                    {getCurrencySymbol(item.originalCurrencyCode || 'USD')}
+                                  </span>
+                                  <Input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    value={getDisplayValue(item, 'unitPrice') ?? ''}
+                                    onChange={(e) => {
+                                      const { value } = e.target;
+                                      if (value === '') {
+                                        handleLocalFieldChange(item.purchaseOrderDetailId, 'unitPrice', '');
+                                      } else {
+                                        const numValue = parseFloat(value);
+                                        if (!Number.isNaN(numValue)) {
+                                          handleLocalFieldChange(item.purchaseOrderDetailId, 'unitPrice', numValue);
+                                        }
                                       }
-                                    }
-                                  }}
-                                  style={{
-                                    fontSize: '13px',
-                                    height: '28px',
-                                    width: '100px',
-                                    fontWeight: '500'
-                                  }}
-                                />
+                                    }}
+                                    style={{
+                                      fontSize: '13px',
+                                      height: '28px',
+                                      width: '80px',
+                                      fontWeight: '500'
+                                    }}
+                                  />
+                                  <span style={{ fontSize: '13px', color: '#666', margin: '0 4px' }}>/</span>
+                                  <span style={{ fontSize: '13px', color: '#000' }}>
+                                    {item.unitOfMeasure || item.catalogItem?.UnitOfMeasurement || 'Unit'}
+                                  </span>
+                                </>
                               ) : (
-                                <span style={{ fontSize: '13px', fontWeight: '500', color: '#000' }}>
-                                  {formatCurrency(getDisplayValue(item, 'unitPrice') || item.unitPrice)}
-                                </span>
+                                <>
+                                  <span style={{ fontSize: '13px', fontWeight: '500', color: '#000' }}>
+                                    {formatDualCurrency(
+                                      {
+                                        originalPrice: item.originalUnitPrice || getDisplayValue(item, 'unitPrice') || item.unitPrice,
+                                        originalCurrency: item.originalCurrencyCode || getCompanyCurrency(),
+                                        convertedPrice: item.convertedUnitPrice,
+                                        convertedCurrency: item.convertedCurrencyCode,
+                                      },
+                                      getUserType()
+                                    )}
+                                  </span>
+                                  <span style={{ fontSize: '13px', color: '#666', margin: '0 4px' }}>/</span>
+                                  <span style={{ fontSize: '13px', color: '#000' }}>
+                                    {item.unitOfMeasure || item.catalogItem?.UnitOfMeasurement || 'Unit'}
+                                  </span>
+                                </>
                               )}
                             </div>
                             <div className="d-flex align-items-center">
                               <span className="text-muted me-2" style={{ fontSize: '13px', minWidth: '80px' }}>Total:</span>
                               <span style={{ fontSize: '14px', fontWeight: '600', color: '#000' }}>
                                 {(() => {
+                                  const itemId = item.purchaseOrderDetailId || item.orderItemId;
                                   const currentQty = getNumericValue(item, 'quantity');
                                   const currentPrice = getNumericValue(item, 'unitPrice');
-                                  return formatCurrency(currentQty * currentPrice);
+                                  // Use real-time converted price if available (from editing), otherwise use stored value
+                                  const realtimeConverted = convertedPrices[itemId];
+                                  const convertedUnitPrice = realtimeConverted?.convertedUnitPrice ?? item.convertedUnitPrice;
+                                  return formatDualCurrency(
+                                    {
+                                      originalPrice: currentPrice * currentQty,
+                                      originalCurrency: item.originalCurrencyCode || getCompanyCurrency(),
+                                      convertedPrice: convertedUnitPrice ? convertedUnitPrice * currentQty : null,
+                                      convertedCurrency: item.convertedCurrencyCode,
+                                    },
+                                    getUserType()
+                                  );
                                 })()}
                               </span>
                             </div>
@@ -2554,6 +2865,159 @@ const PurchaseOrderDetail = () => {
         </ModalFooter>
       </Modal>
 
+      {/* Order Confirmation Modal (for Draft Suppliers) */}
+      <Modal
+        isOpen={showOrderConfirmModal}
+        toggle={() => !isConfirming && setShowOrderConfirmModal(false)}
+        size="lg"
+        centered
+      >
+        <ModalHeader toggle={() => !isConfirming && setShowOrderConfirmModal(false)}>
+          Confirm Order Quantities
+        </ModalHeader>
+        <ModalBody>
+          <p className="text-muted mb-3" style={{ fontSize: '13px' }}>
+            As this is an internal supplier, you can confirm the order quantities directly.
+          </p>
+
+          <div className="d-flex justify-content-between align-items-center mb-3">
+            <span className="text-muted" style={{ fontSize: '13px' }}>
+              Order: <strong className="text-dark">{purchaseOrder?.orderNo}</strong>
+            </span>
+            <Button
+              color="secondary"
+              outline
+              size="sm"
+              onClick={handleConfirmAll}
+              style={{ fontSize: '12px' }}
+            >
+              <i className="bi bi-check-all me-1"></i>
+              Confirm All Remaining
+            </Button>
+          </div>
+
+          <div className="table-responsive" style={{ maxHeight: '400px', overflowY: 'auto' }}>
+            <table className="table table-sm table-bordered" style={{ fontSize: '12px' }}>
+              <thead className="table-light">
+                <tr>
+                  <th style={{ minWidth: '200px' }}>Item</th>
+                  <th className="text-center" style={{ width: '80px' }}>Ordered</th>
+                  <th className="text-center" style={{ width: '80px' }}>Confirmed</th>
+                  <th className="text-center" style={{ width: '80px' }}>Remaining</th>
+                  <th className="text-center" style={{ width: '120px' }}>Confirm Qty</th>
+                </tr>
+              </thead>
+              <tbody>
+                {purchaseOrder?.orderItemDetails?.filter(item => item.isActive).map((item) => {
+                  const ordered = item.quantity || 0;
+                  const confirmed = item.quantityConfirmed || 0;
+                  const remaining = Math.max(0, ordered - confirmed);
+                  const isFullyConfirmed = remaining === 0;
+
+                  return (
+                    <tr key={item.purchaseOrderDetailId} style={isFullyConfirmed ? { backgroundColor: '#f8f9fa' } : {}}>
+                      <td>
+                        <div className="fw-medium" style={{ fontSize: '12px' }}>
+                          {item.partDescription || item.partId || 'N/A'}
+                        </div>
+                        {item.partId && (
+                          <small className="text-muted">{item.partId}</small>
+                        )}
+                      </td>
+                      <td className="text-center align-middle">
+                        <span className="fw-medium">{ordered}</span>
+                      </td>
+                      <td className="text-center align-middle">
+                        <span className={confirmed > 0 ? 'text-success fw-medium' : 'text-muted'}>
+                          {confirmed}
+                        </span>
+                      </td>
+                      <td className="text-center align-middle">
+                        <span className={remaining > 0 ? 'fw-medium' : 'text-muted'}>
+                          {remaining}
+                        </span>
+                      </td>
+                      <td className="text-center align-middle">
+                        {isFullyConfirmed ? (
+                          <span className="text-muted" style={{ fontSize: '11px' }}>
+                            <i className="bi bi-check me-1"></i>
+                            Complete
+                          </span>
+                        ) : (
+                          <Input
+                            type="number"
+                            min="0"
+                            max={remaining}
+                            value={confirmQuantities[item.purchaseOrderDetailId] || 0}
+                            onChange={(e) =>
+                              handleConfirmQuantityChange(e, item.purchaseOrderDetailId, remaining)
+                            }
+                            style={{
+                              width: '80px',
+                              textAlign: 'center',
+                              fontSize: '12px',
+                              padding: '4px 8px',
+                              margin: '0 auto',
+                            }}
+                            disabled={isConfirming}
+                          />
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Summary */}
+          <div className="mt-3 pt-3 border-top" style={{ fontSize: '12px' }}>
+            <Row>
+              <Col md={6}>
+                <div className="d-flex justify-content-between text-muted">
+                  <span>Total Items:</span>
+                  <strong className="text-dark">{purchaseOrder?.orderItemDetails?.filter(i => i.isActive).length || 0}</strong>
+                </div>
+              </Col>
+              <Col md={6}>
+                <div className="d-flex justify-content-between text-muted">
+                  <span>Items to Confirm:</span>
+                  <strong className="text-dark">
+                    {Object.values(confirmQuantities).filter(qty => qty > 0).length}
+                  </strong>
+                </div>
+              </Col>
+            </Row>
+          </div>
+        </ModalBody>
+        <ModalFooter className="border-top">
+          <Button
+            color="light"
+            onClick={() => setShowOrderConfirmModal(false)}
+            disabled={isConfirming}
+          >
+            Cancel
+          </Button>
+          <Button
+            color="dark"
+            onClick={handleConfirmOrderSubmit}
+            disabled={isConfirming || Object.values(confirmQuantities).every(qty => !qty || qty === 0)}
+          >
+            {isConfirming ? (
+              <>
+                <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                Confirming...
+              </>
+            ) : (
+              <>
+                <i className="bi bi-check me-1"></i>
+                Confirm Order
+              </>
+            )}
+          </Button>
+        </ModalFooter>
+      </Modal>
+
       {/* Reapproval Confirmation Modal */}
       <Modal isOpen={showReapprovalModal} toggle={handleCancelReapproval} centered>
         <ModalHeader toggle={handleCancelReapproval}>
@@ -2590,6 +3054,8 @@ const PurchaseOrderDetail = () => {
         toggle={() => setShowPOHistory(false)}
         purchaseOrderId={purchaseOrderId}
         companyId={companyId}
+        supplierCurrency={purchaseOrder?.originalCurrencyCode || purchaseOrder?.orderItemDetails?.[0]?.originalCurrencyCode || 'USD'}
+        companyCurrency={purchaseOrder?.convertedCurrencyCode || getCompanyCurrency() || 'INR'}
       />
 
     </div>

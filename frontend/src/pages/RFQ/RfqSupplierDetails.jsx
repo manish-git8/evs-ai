@@ -41,6 +41,7 @@ import { formatDate, getEntityId } from '../localStorageUtil';
 import '../CompanyManagement/ReactBootstrapTable.scss';
 import AttachmentsModal from './AttachmentsModal';
 import { RFQ_STATUS } from '../../constant/RfqConstant';
+import { formatCurrency, getCurrencySymbol } from '../../utils/currencyUtils';
 
 const RFQSupplierDetail = () => {
   const { rfqId } = useParams();
@@ -59,6 +60,7 @@ const RFQSupplierDetail = () => {
     history: [],
   });
   const [showAttachmentsModal, setShowAttachmentsModal] = useState(false);
+  const [supplierCurrency, setSupplierCurrency] = useState('USD');
   const currentSupplierId = getEntityId();
 
   const formatAddress = (address) => {
@@ -101,6 +103,14 @@ const RFQSupplierDetail = () => {
         setRfqData(rfq);
         setResponseItems(initialResponses);
 
+        // Get current supplier's currency from the supplier list
+        const currentSupplierData = rfq.suppliers?.find(
+          (s) => s.supplierId === currentSupplierId,
+        );
+        if (currentSupplierData?.supplierCurrency) {
+          setSupplierCurrency(currentSupplierData.supplierCurrency);
+        }
+
         if (rfq.companyId) {
           const companyResponse = await CompanyService.getCompanyByCompanyId(rfq.companyId);
           // getCompanyByCompanyId transforms response - data is already the array (not data.content)
@@ -140,7 +150,7 @@ const RFQSupplierDetail = () => {
   const calculateTotal = (unitPrice, quantity) => {
     if (!unitPrice || !quantity) return '-';
     const total = parseFloat(unitPrice) * parseFloat(quantity);
-    return Number.isNaN(total) ? '-' : total.toFixed(2);
+    return Number.isNaN(total) ? '-' : formatCurrency(total, supplierCurrency);
   };
 
   const calculateGrandTotal = () => {
@@ -456,8 +466,8 @@ const RFQSupplierDetail = () => {
                       <th style={{ width: '100px' }}>Qty Required</th>
                       <th style={{ width: '80px' }}>UOM</th>
                       <th style={{ width: '130px' }}>Qty Accepted</th>
-                      <th style={{ width: '130px' }}>Unit Price ($)</th>
-                      <th style={{ width: '120px' }}>Total ($)</th>
+                      <th style={{ width: '130px' }}>Unit Price ({getCurrencySymbol(supplierCurrency)})</th>
+                      <th style={{ width: '120px' }}>Total ({getCurrencySymbol(supplierCurrency)})</th>
                       <th style={{ width: '100px' }}>History</th>
                     </tr>
                   </thead>
@@ -545,7 +555,7 @@ const RFQSupplierDetail = () => {
                         Grand Total:
                       </td>
                       <td className="fw-bold text-success py-3" style={{ fontSize: '16px' }}>
-                        ${calculateGrandTotal().toFixed(2)}
+                        {formatCurrency(calculateGrandTotal(), supplierCurrency)}
                       </td>
                       <td></td>
                     </tr>
@@ -574,7 +584,7 @@ const RFQSupplierDetail = () => {
                     <div className="text-end me-3">
                       <small className="text-muted d-block">Your Quote Total</small>
                       <span className="fw-bold text-success" style={{ fontSize: '18px' }}>
-                        ${calculateGrandTotal().toFixed(2)}
+                        {formatCurrency(calculateGrandTotal(), supplierCurrency)}
                       </span>
                     </div>
                   )}
@@ -607,7 +617,7 @@ const RFQSupplierDetail = () => {
                   <li key={entry.dateTime} className="mb-3 pb-2 border-bottom">
                     <div className="d-flex justify-content-between">
                       <span>
-                        <strong>Price:</strong> ${entry.price.toFixed(2)}
+                        <strong>Price:</strong> {formatCurrency(entry.price, supplierCurrency)}
                       </span>
                       <span>
                         {entry.createdBy?.firstName} {entry.createdBy?.lastName}

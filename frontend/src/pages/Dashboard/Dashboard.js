@@ -29,7 +29,6 @@ import PurchaseOrderService from '../../services/PurchaseOrderService';
 import QueryModal from '../QueryModal/QueryModal';
 import ApprovalPolicyManagementService from '../../services/ApprovalPolicyManagementService';
 import useTooltipManager from '../../utils/useTooltipManager';
-import ChatBot from '../../components/ChatBot/ChatBot';
 import {
   formatDate,
   getEntityId,
@@ -38,7 +37,14 @@ import {
   pageSize,
   parseQueries,
   getUserRole,
+  formatCurrency,
+  getCompanyCurrency,
 } from '../localStorageUtil';
+import {
+  formatDualCurrency,
+  getUserType,
+} from '../../utils/currencyUtils';
+import { MultiFeatureLimitBanner } from '../../components/Billing/FeatureLimitBanner';
 
 Chart.register(
   ArcElement,
@@ -924,27 +930,6 @@ const Classic = () => {
     fetchAnnouncements();
   }, []);
 
-  // ── Real-time sync: Listen for chatbot actions to auto-refresh ──
-  useEffect(() => {
-    const handleChatbotUpdate = () => {
-      // Re-fetch all relevant dashboard data after a chatbot action
-      if (companyId) {
-        fetchCarts(cartsCurrentPage);
-        fetchPaginatedPurchaseOrders(purchaseOrdersCurrentPage, orderSearchTerm);
-        fetchPaginatedRfqs(rfqCurrentPage, rfqSearchTerm);
-      }
-      if (companyId && userId) {
-        fetchApprovedCartApprovals(approvalCartCurrentPage);
-        fetchCompletedPOApprovals(completedPOCurrentPage);
-        fetchCompletedRfqApprovals(completedRfqCurrentPage);
-      }
-    };
-    window.addEventListener('evs-cart-update', handleChatbotUpdate);
-    return () => window.removeEventListener('evs-cart-update', handleChatbotUpdate);
-  }, [companyId, userId, cartsCurrentPage, purchaseOrdersCurrentPage, rfqCurrentPage,
-    orderSearchTerm, rfqSearchTerm, approvalCartCurrentPage,
-    completedPOCurrentPage, completedRfqCurrentPage]);
-
   const handleToggleAnnouncements = () => {
     const newShowState = !showAnnouncements;
     setShowAnnouncements(newShowState);
@@ -981,12 +966,10 @@ const Classic = () => {
         navigate(`/cartDetails/${newCart.cartId}`);
       }, 1000);
     } catch (error) {
-      console.error('Error creating cart:', error);
-      if (error.response?.data?.errorMessage) {
-        toast.error(error.response.data.errorMessage);
-      } else {
-        console.error('Failed to create cart');
-      }
+      // After apiClient.formatError: error.data contains response data, error.message contains the message
+      const errorMessage = error?.data?.errorMessage || error?.message;
+      console.error('Error creating cart:', errorMessage);
+      // Note: apiClient already shows toast for 400/500 errors
     }
   };
 
@@ -1247,22 +1230,15 @@ const Classic = () => {
   };
 
   useEffect(() => {
-    let tooltipInstances = [];
-    const rafId = requestAnimationFrame(() => {
-      const tooltipTriggerList = [...document.querySelectorAll('[data-bs-toggle="tooltip"]')];
-      tooltipTriggerList.forEach((el) => {
-        try {
-          tooltipInstances.push(new bootstrap.Tooltip(el));
-        } catch (e) {
-          // Ignore elements that aren't ready yet
-        }
-      });
-    });
+    const tooltipTriggerList = [...document.querySelectorAll('[data-bs-toggle="tooltip"]')];
+    tooltipTriggerList.forEach((tooltipTriggerEl) => new bootstrap.Tooltip(tooltipTriggerEl));
 
     return () => {
-      cancelAnimationFrame(rafId);
-      tooltipInstances.forEach((tip) => {
-        try { tip.dispose(); } catch (e) { }
+      tooltipTriggerList.forEach((tooltipTriggerEl) => {
+        const tooltip = bootstrap.Tooltip.getInstance(tooltipTriggerEl);
+        if (tooltip) {
+          tooltip.dispose();
+        }
       });
     };
   }, []);
@@ -1308,6 +1284,13 @@ const Classic = () => {
           right: 0,
         }}
       />
+      {/* Feature Usage Limit Banner */}
+      <MultiFeatureLimitBanner
+        featureCodes={['AI_CYCLES', 'RFQ_COUNT', 'USERS']}
+        warningThreshold={80}
+        showUpgrade={true}
+        onUpgrade={() => navigate('/billing')}
+      />
       <div className="mb-3">
         <Card
           style={{
@@ -1318,46 +1301,46 @@ const Classic = () => {
           }}
         >
           {/* Blue Header */}
-          <div
-            style={{
-              background: 'linear-gradient(135deg, #009efb 0%, #0084d6 100%)',
-              padding: '12px 20px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              flexWrap: 'wrap',
-              gap: '10px',
-            }}
-          >
-            <div style={{ color: 'white' }}>
-              <h5 className="mb-0 fw-bold" style={{ fontSize: '1rem' }}>
-                Welcome back, {userName}! 👋
-              </h5>
-              <p className="mb-0 opacity-90" style={{ fontSize: '0.75rem', marginTop: '4px' }}>
-                Your procurement dashboard overview with real-time insights and pending actions.
-              </p>
+            <div
+              style={{
+                background: 'linear-gradient(135deg, #009efb 0%, #0084d6 100%)',
+                padding: '12px 20px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '10px',
+              }}
+            >
+              <div style={{ color: 'white' }}>
+                <h5 className="mb-0 fw-bold" style={{ fontSize: '1rem' }}>
+                  Welcome back, {userName}! 👋
+                </h5>
+                <p className="mb-0 opacity-90" style={{ fontSize: '0.75rem', marginTop: '4px' }}>
+                  Your procurement dashboard overview with real-time insights and pending actions.
+                </p>
+              </div>
+              <div className="d-flex gap-4">
+                <div className="text-center">
+                  <div className="fw-bold text-white" style={{ fontSize: '1.25rem', lineHeight: '1' }}>{cartsTotalElements}</div>
+                  <small className="text-white opacity-75" style={{ fontSize: '0.65rem' }}>Carts</small>
+                </div>
+                <div className="text-center">
+                  <div className="fw-bold text-white" style={{ fontSize: '1.25rem', lineHeight: '1' }}>{rfqTotalElements}</div>
+                  <small className="text-white opacity-75" style={{ fontSize: '0.65rem' }}>RFQs</small>
+                </div>
+                <div className="text-center">
+                  <div className="fw-bold text-white" style={{ fontSize: '1.25rem', lineHeight: '1' }}>{purchaseOrdersTotalElements}</div>
+                  <small className="text-white opacity-75" style={{ fontSize: '0.65rem' }}>POs</small>
+                </div>
+              </div>
             </div>
-            <div className="d-flex gap-4">
-              <div className="text-center">
-                <div className="fw-bold text-white" style={{ fontSize: '1.25rem', lineHeight: '1' }}>{cartsTotalElements}</div>
-                <small className="text-white opacity-75" style={{ fontSize: '0.65rem' }}>Carts</small>
-              </div>
-              <div className="text-center">
-                <div className="fw-bold text-white" style={{ fontSize: '1.25rem', lineHeight: '1' }}>{rfqTotalElements}</div>
-                <small className="text-white opacity-75" style={{ fontSize: '0.65rem' }}>RFQs</small>
-              </div>
-              <div className="text-center">
-                <div className="fw-bold text-white" style={{ fontSize: '1.25rem', lineHeight: '1' }}>{purchaseOrdersTotalElements}</div>
-                <small className="text-white opacity-75" style={{ fontSize: '0.65rem' }}>POs</small>
-              </div>
-            </div>
-          </div>
-          {/* Progress Tiles Row */}
-          <CardBody style={{ padding: '12px 16px' }}>
-            <ProgressCards />
-          </CardBody>
-        </Card>
-      </div>
+            {/* Progress Tiles Row */}
+            <CardBody style={{ padding: '12px 16px' }}>
+              <ProgressCards />
+            </CardBody>
+          </Card>
+        </div>
       <Card
         className="enhanced-card"
         style={{
@@ -1369,7 +1352,7 @@ const Classic = () => {
         <div style={{ borderBottom: '1px solid #e5e7eb', padding: '0 20px' }}>
           <div className="d-flex gap-1">
             {!shouldHideProcurement && (
-              <button
+            <button
                 onClick={() => { setActiveDashboardSection('procurement'); changeSectionWithCleanUrl('procurement'); }}
                 style={{
                   padding: '14px 20px',
@@ -1413,387 +1396,712 @@ const Classic = () => {
                   textAlign: 'center',
                 }}>{cartsTotalElements + rfqTotalElements + purchaseOrdersTotalElements}</span>
               </button>
-            )}
-            <button
-              onClick={() => { setActiveDashboardSection('completed'); changeSectionWithCleanUrl('completed'); }}
-              style={{
-                padding: '14px 20px',
-                fontWeight: activeDashboardSection === 'completed' ? '600' : '500',
-                fontSize: '13px',
-                border: 'none',
-                borderBottom: activeDashboardSection === 'completed' ? '2px solid #059669' : '2px solid transparent',
-                backgroundColor: 'transparent',
-                color: activeDashboardSection === 'completed' ? '#059669' : '#6b7280',
-                cursor: 'pointer',
-                outline: 'none',
-                transition: 'all 0.15s ease',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '10px',
-                marginBottom: '-1px',
-              }}
-              onMouseOver={(e) => {
-                if (activeDashboardSection !== 'completed') {
-                  e.currentTarget.style.color = '#374151';
-                  e.currentTarget.style.backgroundColor = '#f9fafb';
-                }
-              }}
-              onMouseOut={(e) => {
-                if (activeDashboardSection !== 'completed') {
-                  e.currentTarget.style.color = '#6b7280';
-                  e.currentTarget.style.backgroundColor = 'transparent';
-                }
-              }}
-            >
-              <i className="bi bi-check-circle" style={{ fontSize: '14px' }}></i>
-              <span>Your Processed Items</span>
-              <span style={{
-                backgroundColor: activeDashboardSection === 'completed' ? '#d1fae5' : '#f3f4f6',
-                color: activeDashboardSection === 'completed' ? '#059669' : '#6b7280',
-                padding: '2px 8px',
-                borderRadius: '10px',
-                fontSize: '11px',
-                fontWeight: '600',
-                minWidth: '24px',
-                textAlign: 'center',
-              }}>{approvalCartTotalElements + completedRfqTotalElements + completedPOTotalElements}</span>
-            </button>
+              )}
+              <button
+                onClick={() => { setActiveDashboardSection('completed'); changeSectionWithCleanUrl('completed'); }}
+                style={{
+                  padding: '14px 20px',
+                  fontWeight: activeDashboardSection === 'completed' ? '600' : '500',
+                  fontSize: '13px',
+                  border: 'none',
+                  borderBottom: activeDashboardSection === 'completed' ? '2px solid #059669' : '2px solid transparent',
+                  backgroundColor: 'transparent',
+                  color: activeDashboardSection === 'completed' ? '#059669' : '#6b7280',
+                  cursor: 'pointer',
+                  outline: 'none',
+                  transition: 'all 0.15s ease',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  marginBottom: '-1px',
+                }}
+                onMouseOver={(e) => {
+                  if (activeDashboardSection !== 'completed') {
+                    e.currentTarget.style.color = '#374151';
+                    e.currentTarget.style.backgroundColor = '#f9fafb';
+                  }
+                }}
+                onMouseOut={(e) => {
+                  if (activeDashboardSection !== 'completed') {
+                    e.currentTarget.style.color = '#6b7280';
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                  }
+                }}
+              >
+                <i className="bi bi-check-circle" style={{ fontSize: '14px' }}></i>
+                <span>Your Processed Items</span>
+                <span style={{
+                  backgroundColor: activeDashboardSection === 'completed' ? '#d1fae5' : '#f3f4f6',
+                  color: activeDashboardSection === 'completed' ? '#059669' : '#6b7280',
+                  padding: '2px 8px',
+                  borderRadius: '10px',
+                  fontSize: '11px',
+                  fontWeight: '600',
+                  minWidth: '24px',
+                  textAlign: 'center',
+                }}>{approvalCartTotalElements + completedRfqTotalElements + completedPOTotalElements}</span>
+              </button>
+            </div>
           </div>
-        </div>
-        <CardBody>
-          {!shouldHideProcurement && activeDashboardSection === 'procurement' && (
-            <>
-              <div className="d-flex justify-content-between align-items-center mb-3">
-                <div className="d-flex align-items-center gap-3">
-                  <div
-                    className="icon-wrapper"
-                    style={{
-                      width: '40px',
-                      height: '40px',
-                      backgroundColor: '#009efb',
-                      borderRadius: '8px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      border: '2px solid rgba(0, 158, 251, 0.1)',
-                    }}
-                  >
-                    <i className="fas fa-tasks text-white"></i>
+          <CardBody>
+            {!shouldHideProcurement && activeDashboardSection === 'procurement' && (
+              <>
+                <div className="d-flex justify-content-between align-items-center mb-3">
+                  <div className="d-flex align-items-center gap-3">
+                    <div
+                      className="icon-wrapper"
+                      style={{
+                        width: '40px',
+                        height: '40px',
+                        backgroundColor: '#009efb',
+                        borderRadius: '8px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        border: '2px solid rgba(0, 158, 251, 0.1)',
+                      }}
+                    >
+                      <i className="fas fa-tasks text-white"></i>
+                    </div>
+                    <div>
+                      <h4 className="mb-1">Procurement Management</h4>
+                      <p className="text-muted mb-0 small">
+                        Manage your procurement requests, requisitions, and purchase orders
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h4 className="mb-1">Procurement Management</h4>
-                    <p className="text-muted mb-0 small">
-                      Manage your procurement requests, requisitions, and purchase orders
-                    </p>
-                  </div>
-                </div>
-                <div className="d-flex align-items-center gap-3">
-                  <div className="search-wrapper" style={{ minWidth: '280px' }}>
-                    <div className="position-relative">
-                      <input
-                        type="text"
-                        className="form-control"
-                        placeholder={
-                          activeMainTab === 'carts'
-                            ? 'Search carts...'
-                            : activeMainTab === 'purchaseOrders'
-                              ? 'Search orders...'
-                              : 'Search RFQs...'
-                        }
-                        value={
-                          activeMainTab === 'carts'
-                            ? cartSearchTerm
-                            : activeMainTab === 'purchaseOrders'
-                              ? orderSearchTerm
-                              : rfqSearchTerm
-                        }
-                        onChange={(e) => {
-                          if (activeMainTab === 'carts') {
-                            setCartSearchTerm(e.target.value);
-                          } else if (activeMainTab === 'purchaseOrders') {
-                            setOrderSearchTerm(e.target.value);
-                          } else if (activeMainTab === 'rfqs') {
-                            setRfqSearchTerm(e.target.value);
+                  <div className="d-flex align-items-center gap-3">
+                    <div className="search-wrapper" style={{ minWidth: '280px' }}>
+                      <div className="position-relative">
+                        <input
+                          type="text"
+                          className="form-control"
+                          placeholder={
+                            activeMainTab === 'carts'
+                              ? 'Search carts...'
+                              : activeMainTab === 'purchaseOrders'
+                                ? 'Search orders...'
+                                : 'Search RFQs...'
                           }
-                        }}
-                        style={{
-                          paddingLeft: '40px',
-                          paddingRight: (
-                            activeMainTab === 'carts' ? cartSearchTerm : orderSearchTerm
-                          )
-                            ? '40px'
-                            : '12px',
-                          border: '1px solid #e0e0e0',
-                          borderRadius: '4px',
-                          fontSize: '14px',
-                          height: '40px',
-                          boxShadow: 'none',
-                          transition: 'border-color 0.2s ease',
-                        }}
-                        onFocus={(e) => {
-                          e.target.style.borderColor = '#757575';
-                        }}
-                        onBlur={(e) => {
-                          e.target.style.borderColor = '#e0e0e0';
-                        }}
-                      />
-                      <i
-                        className="bi bi-search position-absolute text-muted"
-                        style={{
-                          left: '12px',
-                          top: '50%',
-                          transform: 'translateY(-50%)',
-                          fontSize: '16px',
-                          pointerEvents: 'none',
-                        }}
-                      ></i>
-                      {(activeMainTab === 'carts' ? cartSearchTerm : orderSearchTerm) && (
-                        <button
-                          className="btn p-0 position-absolute"
-                          type="button"
-                          onClick={() => {
+                          value={
+                            activeMainTab === 'carts'
+                              ? cartSearchTerm
+                              : activeMainTab === 'purchaseOrders'
+                                ? orderSearchTerm
+                                : rfqSearchTerm
+                          }
+                          onChange={(e) => {
                             if (activeMainTab === 'carts') {
-                              setCartSearchTerm('');
-                            } else {
-                              setOrderSearchTerm('');
+                              setCartSearchTerm(e.target.value);
+                            } else if (activeMainTab === 'purchaseOrders') {
+                              setOrderSearchTerm(e.target.value);
+                            } else if (activeMainTab === 'rfqs') {
+                              setRfqSearchTerm(e.target.value);
                             }
                           }}
                           style={{
-                            right: '8px',
+                            paddingLeft: '40px',
+                            paddingRight: (
+                              activeMainTab === 'carts' ? cartSearchTerm : orderSearchTerm
+                            )
+                              ? '40px'
+                              : '12px',
+                            border: '1px solid #e0e0e0',
+                            borderRadius: '4px',
+                            fontSize: '14px',
+                            height: '40px',
+                            boxShadow: 'none',
+                            transition: 'border-color 0.2s ease',
+                          }}
+                          onFocus={(e) => {
+                            e.target.style.borderColor = '#757575';
+                          }}
+                          onBlur={(e) => {
+                            e.target.style.borderColor = '#e0e0e0';
+                          }}
+                        />
+                        <i
+                          className="bi bi-search position-absolute text-muted"
+                          style={{
+                            left: '12px',
                             top: '50%',
                             transform: 'translateY(-50%)',
-                            width: '24px',
-                            height: '24px',
-                            border: 'none',
-                            background: 'none',
-                            color: '#757575',
+                            fontSize: '16px',
+                            pointerEvents: 'none',
                           }}
-                        >
-                          <i className="bi bi-x" style={{ fontSize: '16px' }}></i>
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  {activeMainTab === 'carts' && (
-                    <button
-                      className="btn btn-primary px-4 py-2"
-                      type="button"
-                      onClick={handleCreateCartWithConfirmation}
-                      style={{
-                        backgroundColor: '#009efb',
-                        border: '1px solid #009efb',
-                        borderRadius: '8px',
-                        boxShadow: '0 2px 8px rgba(0, 158, 251, 0.2)',
-                        transition: 'all 0.2s ease',
-                        color: 'white',
-                      }}
-                      onMouseOver={(e) => {
-                        e.target.style.backgroundColor = '#0084d6';
-                        e.target.style.transform = 'translateY(-1px)';
-                        e.target.style.boxShadow = '0 4px 12px rgba(0, 158, 251, 0.3)';
-                      }}
-                      onMouseOut={(e) => {
-                        e.target.style.backgroundColor = '#009efb';
-                        e.target.style.transform = 'translateY(0px)';
-                        e.target.style.boxShadow = '0 2px 8px rgba(0, 158, 251, 0.2)';
-                      }}
-                      onFocus={(e) => {
-                        e.target.style.backgroundColor = '#0084d6';
-                        e.target.style.transform = 'translateY(-1px)';
-                        e.target.style.boxShadow = '0 4px 12px rgba(0, 158, 251, 0.3)';
-                      }}
-                      onBlur={(e) => {
-                        e.target.style.backgroundColor = '#009efb';
-                        e.target.style.transform = 'translateY(0px)';
-                        e.target.style.boxShadow = '0 2px 8px rgba(0, 158, 251, 0.2)';
-                      }}
-                    >
-                      <i className="fas fa-plus me-2"></i>Add New Cart
-                    </button>
-                  )}
-                  {activeMainTab === 'rfqs' && (
-                    <button
-                      className="btn btn-primary px-4 py-2"
-                      type="button"
-                      onClick={() => navigate('/CreateRfq')}
-                      style={{
-                        backgroundColor: '#009efb',
-                        border: '1px solid #009efb',
-                        borderRadius: '8px',
-                        boxShadow: '0 2px 8px rgba(0, 158, 251, 0.2)',
-                        transition: 'all 0.2s ease',
-                        color: 'white',
-                      }}
-                      onMouseOver={(e) => {
-                        e.target.style.backgroundColor = '#0084d6';
-                        e.target.style.transform = 'translateY(-1px)';
-                        e.target.style.boxShadow = '0 4px 12px rgba(0, 158, 251, 0.3)';
-                      }}
-                      onMouseOut={(e) => {
-                        e.target.style.backgroundColor = '#009efb';
-                        e.target.style.transform = 'translateY(0px)';
-                        e.target.style.boxShadow = '0 2px 8px rgba(0, 158, 251, 0.2)';
-                      }}
-                      onFocus={(e) => {
-                        e.target.style.backgroundColor = '#0084d6';
-                        e.target.style.transform = 'translateY(-1px)';
-                        e.target.style.boxShadow = '0 4px 12px rgba(0, 158, 251, 0.3)';
-                      }}
-                      onBlur={(e) => {
-                        e.target.style.backgroundColor = '#009efb';
-                        e.target.style.transform = 'translateY(0px)';
-                        e.target.style.boxShadow = '0 2px 8px rgba(0, 158, 251, 0.2)';
-                      }}
-                    >
-                      <i className="fas fa-plus me-2"></i>Add New RFQ
-                    </button>
-                  )}
-                </div>
-              </div>
-              <div className="nav nav-tabs mb-3" role="tablist">
-                <button
-                  className={`nav-link ${activeMainTab === 'carts' ? 'active' : ''}`}
-                  onClick={() => { setActiveMainTab('carts'); changeSubTabWithCleanUrl('mainTab', 'carts'); }}
-                  type="button"
-                  style={{
-                    border: 'none',
-                    backgroundColor: activeMainTab === 'carts' ? '#f8f9fa' : 'transparent',
-                    color: activeMainTab === 'carts' ? '#495057' : '#6c757d',
-                    borderBottom:
-                      activeMainTab === 'carts' ? '2px solid #009efb' : '2px solid transparent',
-                    padding: '12px 24px',
-                    cursor: 'pointer',
-                    fontWeight: activeMainTab === 'carts' ? '600' : '400',
-                    borderRadius: '8px 8px 0 0',
-                  }}
-                >
-                  <i className="fas fa-shopping-cart me-2"></i>Procurement Carts (
-                  {cartsTotalElements})
-                </button>
-                <button
-                  className={`nav-link ${activeMainTab === 'rfqs' ? 'active' : ''}`}
-                  onClick={() => { setActiveMainTab('rfqs'); changeSubTabWithCleanUrl('mainTab', 'rfqs'); }}
-                  type="button"
-                  style={{
-                    border: 'none',
-                    backgroundColor: activeMainTab === 'rfqs' ? '#f8f9fa' : 'transparent',
-                    color: activeMainTab === 'rfqs' ? '#495057' : '#6c757d',
-                    borderBottom:
-                      activeMainTab === 'rfqs' ? '2px solid #00c292' : '2px solid transparent',
-                    padding: '12px 24px',
-                    cursor: 'pointer',
-                    fontWeight: activeMainTab === 'rfqs' ? '600' : '400',
-                    borderRadius: '8px 8px 0 0',
-                  }}
-                >
-                  <i className="fas fa-file-contract me-2"></i>Request for Quotations (
-                  {rfqTotalElements})
-                </button>
-                <button
-                  className={`nav-link ${activeMainTab === 'purchaseOrders' ? 'active' : ''}`}
-                  onClick={() => { setActiveMainTab('purchaseOrders'); changeSubTabWithCleanUrl('mainTab', 'purchaseOrders'); }}
-                  type="button"
-                  style={{
-                    border: 'none',
-                    backgroundColor:
-                      activeMainTab === 'purchaseOrders' ? '#f8f9fa' : 'transparent',
-                    color: activeMainTab === 'purchaseOrders' ? '#495057' : '#6c757d',
-                    borderBottom:
-                      activeMainTab === 'purchaseOrders'
-                        ? '2px solid #4facfe'
-                        : '2px solid transparent',
-                    padding: '12px 24px',
-                    cursor: 'pointer',
-                    fontWeight: activeMainTab === 'purchaseOrders' ? '600' : '400',
-                    borderRadius: '8px 8px 0 0',
-                  }}
-                >
-                  <i className="fas fa-file-invoice me-2"></i>Purchase Orders (
-                  {purchaseOrdersTotalElements})
-                </button>
-              </div>
-              <div className="tab-content">
-                {activeMainTab === 'carts' && (
-                  <div className="tab-pane fade show active">
-                    {cartsLoading ? (
-                      <div className="text-center p-4">
-                        <i className="fas fa-spinner fa-spin me-2"></i>
-                        Loading carts...
+                        ></i>
+                        {(activeMainTab === 'carts' ? cartSearchTerm : orderSearchTerm) && (
+                          <button
+                            className="btn p-0 position-absolute"
+                            type="button"
+                            onClick={() => {
+                              if (activeMainTab === 'carts') {
+                                setCartSearchTerm('');
+                              } else {
+                                setOrderSearchTerm('');
+                              }
+                            }}
+                            style={{
+                              right: '8px',
+                              top: '50%',
+                              transform: 'translateY(-50%)',
+                              width: '24px',
+                              height: '24px',
+                              border: 'none',
+                              background: 'none',
+                              color: '#757575',
+                            }}
+                          >
+                            <i className="bi bi-x" style={{ fontSize: '16px' }}></i>
+                          </button>
+                        )}
                       </div>
-                    ) : (
-                      <div className="table-responsive">
-                        <BootstrapTable
-                          data={cartData}
-                          striped
-                          hover
-                          condensed
-                          pagination={cartsTotalElements > cartsPageSize}
-                          remote
-                          fetchInfo={{
-                            dataTotalSize: cartsTotalElements,
-                          }}
-                          options={cartOptions}
-                          tableHeaderClass="mb-0"
-                        >
-                          <TableHeaderColumn
-                            width="10%"
-                            dataField="cartNo"
-                            dataFormat={(cell, row) => (
-                              <span
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleNavigate(
-                                    row.cartId,
-                                    row.shipToAddressId,
-                                    row.cartStatusType,
-                                  );
-                                }}
-                                style={{
-                                  color: '#009efb',
-                                  cursor: 'pointer',
-                                  textDecoration: 'none',
-                                }}
-                                onMouseOver={(e) => {
-                                  e.target.style.textDecoration = 'underline';
-                                }}
-                                onMouseOut={(e) => {
-                                  e.target.style.textDecoration = 'none';
-                                }}
-                                onFocus={(e) => {
-                                  e.target.style.textDecoration = 'underline';
-                                }}
-                                onBlur={(e) => {
-                                  e.target.style.textDecoration = 'none';
-                                }}
-                                role="button"
-                                tabIndex={0}
-                                onKeyPress={(e) => {
-                                  if (e.key === 'Enter' || e.key === ' ') {
+                    </div>
+                    {activeMainTab === 'carts' && (
+                      <button
+                        className="btn btn-primary px-4 py-2"
+                        type="button"
+                        onClick={handleCreateCartWithConfirmation}
+                        style={{
+                          backgroundColor: '#009efb',
+                          border: '1px solid #009efb',
+                          borderRadius: '8px',
+                          boxShadow: '0 2px 8px rgba(0, 158, 251, 0.2)',
+                          transition: 'all 0.2s ease',
+                          color: 'white',
+                        }}
+                        onMouseOver={(e) => {
+                          e.target.style.backgroundColor = '#0084d6';
+                          e.target.style.transform = 'translateY(-1px)';
+                          e.target.style.boxShadow = '0 4px 12px rgba(0, 158, 251, 0.3)';
+                        }}
+                        onMouseOut={(e) => {
+                          e.target.style.backgroundColor = '#009efb';
+                          e.target.style.transform = 'translateY(0px)';
+                          e.target.style.boxShadow = '0 2px 8px rgba(0, 158, 251, 0.2)';
+                        }}
+                        onFocus={(e) => {
+                          e.target.style.backgroundColor = '#0084d6';
+                          e.target.style.transform = 'translateY(-1px)';
+                          e.target.style.boxShadow = '0 4px 12px rgba(0, 158, 251, 0.3)';
+                        }}
+                        onBlur={(e) => {
+                          e.target.style.backgroundColor = '#009efb';
+                          e.target.style.transform = 'translateY(0px)';
+                          e.target.style.boxShadow = '0 2px 8px rgba(0, 158, 251, 0.2)';
+                        }}
+                      >
+                        <i className="fas fa-plus me-2"></i>Add New Cart
+                      </button>
+                    )}
+                    {activeMainTab === 'rfqs' && (
+                      <button
+                        className="btn btn-primary px-4 py-2"
+                        type="button"
+                        onClick={() => navigate('/CreateRfq')}
+                        style={{
+                          backgroundColor: '#009efb',
+                          border: '1px solid #009efb',
+                          borderRadius: '8px',
+                          boxShadow: '0 2px 8px rgba(0, 158, 251, 0.2)',
+                          transition: 'all 0.2s ease',
+                          color: 'white',
+                        }}
+                        onMouseOver={(e) => {
+                          e.target.style.backgroundColor = '#0084d6';
+                          e.target.style.transform = 'translateY(-1px)';
+                          e.target.style.boxShadow = '0 4px 12px rgba(0, 158, 251, 0.3)';
+                        }}
+                        onMouseOut={(e) => {
+                          e.target.style.backgroundColor = '#009efb';
+                          e.target.style.transform = 'translateY(0px)';
+                          e.target.style.boxShadow = '0 2px 8px rgba(0, 158, 251, 0.2)';
+                        }}
+                        onFocus={(e) => {
+                          e.target.style.backgroundColor = '#0084d6';
+                          e.target.style.transform = 'translateY(-1px)';
+                          e.target.style.boxShadow = '0 4px 12px rgba(0, 158, 251, 0.3)';
+                        }}
+                        onBlur={(e) => {
+                          e.target.style.backgroundColor = '#009efb';
+                          e.target.style.transform = 'translateY(0px)';
+                          e.target.style.boxShadow = '0 2px 8px rgba(0, 158, 251, 0.2)';
+                        }}
+                      >
+                        <i className="fas fa-plus me-2"></i>Add New RFQ
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div className="nav nav-tabs mb-3" role="tablist">
+                  <button
+                    className={`nav-link ${activeMainTab === 'carts' ? 'active' : ''}`}
+                    onClick={() => { setActiveMainTab('carts'); changeSubTabWithCleanUrl('mainTab', 'carts'); }}
+                    type="button"
+                    style={{
+                      border: 'none',
+                      backgroundColor: activeMainTab === 'carts' ? '#f8f9fa' : 'transparent',
+                      color: activeMainTab === 'carts' ? '#495057' : '#6c757d',
+                      borderBottom:
+                        activeMainTab === 'carts' ? '2px solid #009efb' : '2px solid transparent',
+                      padding: '12px 24px',
+                      cursor: 'pointer',
+                      fontWeight: activeMainTab === 'carts' ? '600' : '400',
+                      borderRadius: '8px 8px 0 0',
+                    }}
+                  >
+                    <i className="fas fa-shopping-cart me-2"></i>Procurement Carts (
+                    {cartsTotalElements})
+                  </button>
+                  <button
+                    className={`nav-link ${activeMainTab === 'rfqs' ? 'active' : ''}`}
+                    onClick={() => { setActiveMainTab('rfqs'); changeSubTabWithCleanUrl('mainTab', 'rfqs'); }}
+                    type="button"
+                    style={{
+                      border: 'none',
+                      backgroundColor: activeMainTab === 'rfqs' ? '#f8f9fa' : 'transparent',
+                      color: activeMainTab === 'rfqs' ? '#495057' : '#6c757d',
+                      borderBottom:
+                        activeMainTab === 'rfqs' ? '2px solid #00c292' : '2px solid transparent',
+                      padding: '12px 24px',
+                      cursor: 'pointer',
+                      fontWeight: activeMainTab === 'rfqs' ? '600' : '400',
+                      borderRadius: '8px 8px 0 0',
+                    }}
+                  >
+                    <i className="fas fa-file-contract me-2"></i>Request for Quotations (
+                    {rfqTotalElements})
+                  </button>
+                  <button
+                    className={`nav-link ${activeMainTab === 'purchaseOrders' ? 'active' : ''}`}
+                    onClick={() => { setActiveMainTab('purchaseOrders'); changeSubTabWithCleanUrl('mainTab', 'purchaseOrders'); }}
+                    type="button"
+                    style={{
+                      border: 'none',
+                      backgroundColor:
+                        activeMainTab === 'purchaseOrders' ? '#f8f9fa' : 'transparent',
+                      color: activeMainTab === 'purchaseOrders' ? '#495057' : '#6c757d',
+                      borderBottom:
+                        activeMainTab === 'purchaseOrders'
+                          ? '2px solid #4facfe'
+                          : '2px solid transparent',
+                      padding: '12px 24px',
+                      cursor: 'pointer',
+                      fontWeight: activeMainTab === 'purchaseOrders' ? '600' : '400',
+                      borderRadius: '8px 8px 0 0',
+                    }}
+                  >
+                    <i className="fas fa-file-invoice me-2"></i>Purchase Orders (
+                    {purchaseOrdersTotalElements})
+                  </button>
+                </div>
+                <div className="tab-content">
+                  {activeMainTab === 'carts' && (
+                    <div className="tab-pane fade show active">
+                      {cartsLoading ? (
+                        <div className="text-center p-4">
+                          <i className="fas fa-spinner fa-spin me-2"></i>
+                          Loading carts...
+                        </div>
+                      ) : (
+                        <div className="table-responsive">
+                          <BootstrapTable
+                            data={cartData}
+                            striped
+                            hover
+                            condensed
+                            pagination={cartsTotalElements > cartsPageSize}
+                            remote
+                            fetchInfo={{
+                              dataTotalSize: cartsTotalElements,
+                            }}
+                            options={cartOptions}
+                            tableHeaderClass="mb-0"
+                          >
+                            <TableHeaderColumn
+                              width="10%"
+                              dataField="cartNo"
+                              dataFormat={(cell, row) => (
+                                <span
+                                  onClick={(e) => {
                                     e.stopPropagation();
                                     handleNavigate(
                                       row.cartId,
                                       row.shipToAddressId,
                                       row.cartStatusType,
                                     );
-                                  }
+                                  }}
+                                  style={{
+                                    color: '#009efb',
+                                    cursor: 'pointer',
+                                    textDecoration: 'none',
+                                  }}
+                                  onMouseOver={(e) => {
+                                    e.target.style.textDecoration = 'underline';
+                                  }}
+                                  onMouseOut={(e) => {
+                                    e.target.style.textDecoration = 'none';
+                                  }}
+                                  onFocus={(e) => {
+                                    e.target.style.textDecoration = 'underline';
+                                  }}
+                                  onBlur={(e) => {
+                                    e.target.style.textDecoration = 'none';
+                                  }}
+                                  role="button"
+                                  tabIndex={0}
+                                  onKeyPress={(e) => {
+                                    if (e.key === 'Enter' || e.key === ' ') {
+                                      e.stopPropagation();
+                                      handleNavigate(
+                                        row.cartId,
+                                        row.shipToAddressId,
+                                        row.cartStatusType,
+                                      );
+                                    }
+                                  }}
+                                >
+                                  {cell || '-'}
+                                </span>
+                              )}
+                              dataAlign="center"
+                              headerAlign="center"
+                              isKey
+                              thStyle={{
+                                cursor: 'pointer',
+                                userSelect: 'none',
+                                textAlign: 'center',
+                              }}
+                              columnClassName="sortable-column"
+                              tdStyle={{ textAlign: 'center', verticalAlign: 'middle' }}
+                            >
+                              <div
+                                onClick={() => handleCartSort('cartNo')}
+                                style={{
+                                  cursor: 'pointer',
+                                  userSelect: 'none',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
                                 }}
                               >
+                                <i className="bi bi-cart me-1 text-primary"></i>Cart No.{' '}
+                                {renderSortIcon('cartNo')}
+                              </div>
+                            </TableHeaderColumn>
+
+                            <TableHeaderColumn
+                              width="16%"
+                              dataField="supplierNames"
+                              dataFormat={(cell) => {
+                                if (!cell) return <span className="text-muted">-</span>;
+                                const supplierText = typeof cell === 'string' ? cell : String(cell);
+                                const supplierName =
+                                  supplierText.length > 25
+                                    ? `${supplierText.substring(0, 25)}...`
+                                    : supplierText;
+                                return (
+                                  <span
+                                    style={{ cursor: 'default' }}
+                                    title={supplierText
+                                      .split(',')
+                                      .map((supplier) => `• ${supplier.trim()}`)
+                                      .join('\n')}
+                                  >
+                                    {supplierName || 'N/A'}
+                                  </span>
+                                );
+                              }}
+                              dataAlign="center"
+                              headerAlign="center"
+                              thStyle={{
+                                cursor: 'pointer',
+                                userSelect: 'none',
+                                textAlign: 'center',
+                              }}
+                              columnClassName="sortable-column"
+                              tdStyle={{ textAlign: 'center', verticalAlign: 'middle' }}
+                            >
+                              <div
+                                style={{
+                                  cursor: 'pointer',
+                                  userSelect: 'none',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}
+                              >
+                                <i className="bi bi-building me-1 text-primary"></i>Supplier{' '}
+                              </div>
+                            </TableHeaderColumn>
+
+                            <TableHeaderColumn
+                              dataField="lineItemCount"
+                              dataAlign="center"
+                              headerAlign="center"
+                              width="7%"
+                              dataFormat={(cell) => (
+                                <span style={{ fontSize: '13px' }}>{cell || 'N/A'}</span>
+                              )}
+                              thStyle={{
+                                cursor: 'pointer',
+                                userSelect: 'none',
+                                textAlign: 'center',
+                              }}
+                              columnClassName="sortable-column"
+                              tdStyle={{ textAlign: 'center', verticalAlign: 'middle' }}
+                            >
+                              <div
+                                style={{
+                                  cursor: 'pointer',
+                                  userSelect: 'none',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}
+                              >
+                                <i className="bi bi-list-ol me-1 text-primary"></i>Items
+                              </div>
+                            </TableHeaderColumn>
+
+                            <TableHeaderColumn
+                              dataField="cartStatusType"
+                              dataFormat={(cell) => formatStatusWithIcon(cell)}
+                              dataAlign="center"
+                              headerAlign="center"
+                              width="15%"
+                              thStyle={{
+                                cursor: 'pointer',
+                                userSelect: 'none',
+                                textAlign: 'center',
+                              }}
+                              columnClassName="sortable-column"
+                              tdStyle={{ textAlign: 'center', verticalAlign: 'middle' }}
+                            >
+                              <div
+                                onClick={() => handleCartSort('cartStatusType')}
+                                style={{
+                                  cursor: 'pointer',
+                                  userSelect: 'none',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}
+                              >
+                                <i className="bi bi-flag me-1 text-primary"></i>Status{' '}
+                                {renderSortIcon('cartStatusType')}
+                              </div>
+                            </TableHeaderColumn>
+
+                            <TableHeaderColumn
+                              dataField="neededBy"
+                              dataAlign="center"
+                              headerAlign="center"
+                              dataFormat={(cell) => (
+                                <span className="date-value" style={{ fontSize: '13px' }}>
+                                  {formatDate(cell)}
+                                </span>
+                              )}
+                              width="10%"
+                              thStyle={{
+                                cursor: 'pointer',
+                                userSelect: 'none',
+                                textAlign: 'center',
+                              }}
+                              columnClassName="sortable-column"
+                              tdStyle={{ textAlign: 'center', verticalAlign: 'middle' }}
+                            >
+                              <div
+                                onClick={() => handleCartSort('neededBy')}
+                                style={{
+                                  cursor: 'pointer',
+                                  userSelect: 'none',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}
+                              >
+                                <i className="bi bi-calendar-event me-1 text-primary"></i>Needed By{' '}
+                                {renderSortIcon('neededBy')}
+                              </div>
+                            </TableHeaderColumn>
+
+                            <TableHeaderColumn
+                              dataField="createdBy"
+                              width="12%"
+                              dataAlign="center"
+                              headerAlign="center"
+                              dataFormat={(cell) => {
+                                if (!cell) return <span className="text-muted">-</span>;
+
+                                const fullText =
+                                  `${cell.firstName} ${cell.lastName} (${cell.email})`.trim();
+                                const displayText =
+                                  fullText.length > 25
+                                    ? `${fullText.substring(0, 25)}...`
+                                    : fullText;
+                                return (
+                                  <span
+                                    style={{ cursor: 'default', fontSize: '13px' }}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleTooltip(e, fullText);
+                                    }}
+                                  >
+                                    {displayText}
+                                  </span>
+                                );
+                              }}
+                              thStyle={{
+                                cursor: 'pointer',
+                                userSelect: 'none',
+                                textAlign: 'center',
+                              }}
+                              columnClassName="sortable-column"
+                              tdStyle={{ textAlign: 'center', verticalAlign: 'middle' }}
+                            >
+                              <div
+                                onClick={() => handleCartSort('createdBy')}
+                                style={{
+                                  cursor: 'pointer',
+                                  userSelect: 'none',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}
+                              >
+                                <i className="bi bi-person me-1 text-primary"></i>Created By{' '}
+                                {renderSortIcon('createdBy')}
+                              </div>
+                            </TableHeaderColumn>
+
+                            <TableHeaderColumn
+                              dataField="createdDate"
+                              dataAlign="center"
+                              headerAlign="center"
+                              width="9%"
+                              dataFormat={(cell) => (
+                                <span className="date-value" style={{ fontSize: '13px' }}>
+                                  {formatDate(cell)}
+                                </span>
+                              )}
+                              thStyle={{
+                                cursor: 'pointer',
+                                userSelect: 'none',
+                                textAlign: 'center',
+                              }}
+                              columnClassName="sortable-column"
+                              tdStyle={{ textAlign: 'center', verticalAlign: 'middle' }}
+                            >
+                              <div
+                                onClick={() => handleCartSort('createdDate')}
+                                style={{
+                                  cursor: 'pointer',
+                                  userSelect: 'none',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}
+                              >
+                                <i className="bi bi-calendar-plus me-1 text-primary"></i>Created{' '}
+                                {renderSortIcon('createdDate')}
+                              </div>
+                            </TableHeaderColumn>
+
+                            <TableHeaderColumn
+                              dataField="cartAmount"
+                              dataAlign="center"
+                              headerAlign="center"
+                              width="12%"
+                              dataFormat={(cell, row) => (
+                                <span className="currency-value" style={{ fontSize: '12px' }}>
+                                  {formatDualCurrency(
+                                    {
+                                      originalPrice: row.originalCartAmount || cell,
+                                      originalCurrency: row.originalCurrencyCode,
+                                      convertedPrice: row.convertedCartAmount,
+                                      convertedCurrency: row.convertedCurrencyCode,
+                                    },
+                                    getUserType()
+                                  )}
+                                </span>
+                              )}
+                              thStyle={{
+                                cursor: 'pointer',
+                                userSelect: 'none',
+                                textAlign: 'center',
+                              }}
+                              columnClassName="sortable-column"
+                              tdStyle={{ textAlign: 'center', verticalAlign: 'middle' }}
+                            >
+                              <div
+                                style={{
+                                  cursor: 'pointer',
+                                  userSelect: 'none',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}
+                              >
+                                <i className="bi bi-currency-dollar me-1 text-primary"></i>Amount
+                              </div>
+                            </TableHeaderColumn>
+
+                            <TableHeaderColumn
+                              dataField="actions"
+                              dataFormat={actionsFormatter}
+                              dataAlign="center"
+                              headerAlign="center"
+                              width="12%"
+                            >
+                              <i className="bi bi-gear me-1 text-primary"></i>Actions
+                            </TableHeaderColumn>
+                          </BootstrapTable>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {activeMainTab === 'purchaseOrders' && (
+                    <div className="tab-pane fade show active">
+                      {purchaseOrdersLoading && (
+                        <div className="text-center py-4">
+                          <div className="spinner-border text-primary" role="status">
+                            <span className="visually-hidden">Loading...</span>
+                          </div>
+                          <p className="mt-2 text-muted">Loading purchase orders...</p>
+                        </div>
+                      )}
+                      <div className="table-responsive">
+                        <BootstrapTable
+                          data={purchaseOrdersRaise}
+                          striped
+                          hover
+                          condensed
+                          pagination={purchaseOrdersTotalElements > purchaseOrdersPageSize}
+                          remote
+                          fetchInfo={{
+                            dataTotalSize: purchaseOrdersTotalElements,
+                          }}
+                          options={poOptions}
+                          tableHeaderClass="mb-0"
+                        >
+                          <TableHeaderColumn
+                            dataField="orderNo"
+                            dataAlign="center"
+                            headerAlign="center"
+                            width="10%"
+                            dataFormat={(cell) => (
+                              <span style={{ fontSize: '13px', color: '#495057' }}>
                                 {cell || '-'}
                               </span>
                             )}
-                            dataAlign="center"
-                            headerAlign="center"
-                            isKey
-                            thStyle={{
-                              cursor: 'pointer',
-                              userSelect: 'none',
-                              textAlign: 'center',
-                            }}
+                            thStyle={{ cursor: 'pointer', userSelect: 'none', textAlign: 'center' }}
                             columnClassName="sortable-column"
                             tdStyle={{ textAlign: 'center', verticalAlign: 'middle' }}
                           >
                             <div
-                              onClick={() => handleCartSort('cartNo')}
+                              onClick={() => handlePoSort('orderNo')}
                               style={{
                                 cursor: 'pointer',
                                 userSelect: 'none',
@@ -1802,44 +2110,144 @@ const Classic = () => {
                                 justifyContent: 'center',
                               }}
                             >
-                              <i className="bi bi-cart me-1 text-primary"></i>Cart No.{' '}
-                              {renderSortIcon('cartNo')}
+                              <i className="bi bi-receipt me-1 text-primary"></i>Order No.{' '}
+                              {renderPoSortIcon('orderNo')}
                             </div>
                           </TableHeaderColumn>
 
                           <TableHeaderColumn
-                            width="16%"
-                            dataField="supplierNames"
-                            dataFormat={(cell) => {
-                              if (!cell) return <span className="text-muted">-</span>;
-                              const supplierText = typeof cell === 'string' ? cell : String(cell);
-                              const supplierName =
-                                supplierText.length > 25
-                                  ? `${supplierText.substring(0, 25)}...`
-                                  : supplierText;
-                              return (
-                                <span
-                                  style={{ cursor: 'default' }}
-                                  title={supplierText
-                                    .split(',')
-                                    .map((supplier) => `• ${supplier.trim()}`)
-                                    .join('\n')}
-                                >
-                                  {supplierName || 'N/A'}
-                                </span>
-                              );
-                            }}
+                            dataField="cart"
                             dataAlign="center"
                             headerAlign="center"
-                            thStyle={{
-                              cursor: 'pointer',
-                              userSelect: 'none',
-                              textAlign: 'center',
+                            width="13%"
+                            dataFormat={(cell, row) => {
+                              if (row.cart) {
+                                return (
+                                  <span
+                                    style={{
+                                      cursor: 'pointer',
+                                      color: '#009efb',
+                                      fontSize: '13px',
+                                      textDecoration: 'none',
+                                    }}
+                                    onMouseOver={(e) => {
+                                      e.target.style.textDecoration = 'underline';
+                                    }}
+                                    onMouseOut={(e) => {
+                                      e.target.style.textDecoration = 'none';
+                                    }}
+                                    onFocus={(e) => {
+                                      e.target.style.textDecoration = 'underline';
+                                    }}
+                                    onBlur={(e) => {
+                                      e.target.style.textDecoration = 'none';
+                                    }}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleNavigate(
+                                        row.cart.cartId,
+                                        row.shippingToAddress && row.shippingToAddress.addressId,
+                                        row.orderStatus,
+                                      );
+                                    }}
+                                    role="button"
+                                    tabIndex={0}
+                                    onKeyPress={(e) => {
+                                      if (e.key === 'Enter' || e.key === ' ') {
+                                        e.stopPropagation();
+                                        handleNavigate(
+                                          row.cart.cartId,
+                                          row.shippingToAddress && row.shippingToAddress.addressId,
+                                          row.orderStatus,
+                                        );
+                                      }
+                                    }}
+                                  >
+                                    CART - {cell.cartNo}
+                                  </span>
+                                );
+                              }
+                              if (row.rfq) {
+                                return (
+                                  <span
+                                    style={{
+                                      cursor: 'pointer',
+                                      color: '#009efb',
+                                      fontSize: '13px',
+                                      textDecoration: 'none',
+                                    }}
+                                    onMouseOver={(e) => {
+                                      e.target.style.textDecoration = 'underline';
+                                    }}
+                                    onMouseOut={(e) => {
+                                      e.target.style.textDecoration = 'none';
+                                    }}
+                                    onFocus={(e) => {
+                                      e.target.style.textDecoration = 'underline';
+                                    }}
+                                    onBlur={(e) => {
+                                      e.target.style.textDecoration = 'none';
+                                    }}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleNavigateToRfq(row.rfq);
+                                    }}
+                                    role="button"
+                                    tabIndex={0}
+                                    onKeyPress={(e) => {
+                                      if (e.key === 'Enter' || e.key === ' ') {
+                                        e.stopPropagation();
+                                        handleNavigateToRfq(row.rfq);
+                                      }
+                                    }}
+                                  >
+                                    RFQ - {cell?.rfqNumber}
+                                  </span>
+                                );
+                              }
+                              return <span className="text-muted">-</span>;
                             }}
+                            thStyle={{ cursor: 'pointer', userSelect: 'none', textAlign: 'center' }}
                             columnClassName="sortable-column"
                             tdStyle={{ textAlign: 'center', verticalAlign: 'middle' }}
                           >
                             <div
+                              onClick={() => handlePoSort('cart')}
+                              style={{
+                                cursor: 'pointer',
+                                userSelect: 'none',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                              }}
+                            >
+                              <i className="bi bi-diagram-3 me-1 text-primary"></i>Source{' '}
+                              {renderPoSortIcon('cart')}
+                            </div>
+                          </TableHeaderColumn>
+
+                          <TableHeaderColumn
+                            dataField="supplier"
+                            dataAlign="center"
+                            headerAlign="center"
+                            width="12%"
+                            dataFormat={(cell) => {
+                              const supplierName = cell?.displayName || cell?.name;
+                              if (!supplierName)
+                                return <span className="text-muted">-</span>;
+                              const displayText = supplierName.length > 15 ? `${supplierName.substring(0, 15)}...` : supplierName;
+                              return (
+                                <span title={supplierName} style={{ fontSize: '13px' }}>
+                                  {displayText}
+                                </span>
+                              );
+                            }}
+                            thStyle={{ cursor: 'pointer', userSelect: 'none', textAlign: 'center' }}
+                            columnClassName="sortable-column"
+                            tdStyle={{ textAlign: 'center', verticalAlign: 'middle' }}
+                          >
+                            <div
+                              onClick={() => handlePoSort('supplier')}
                               style={{
                                 cursor: 'pointer',
                                 userSelect: 'none',
@@ -1849,54 +2257,23 @@ const Classic = () => {
                               }}
                             >
                               <i className="bi bi-building me-1 text-primary"></i>Supplier{' '}
+                              {renderPoSortIcon('supplier')}
                             </div>
                           </TableHeaderColumn>
 
                           <TableHeaderColumn
-                            dataField="lineItemCount"
-                            dataAlign="center"
-                            headerAlign="center"
-                            width="7%"
-                            dataFormat={(cell) => (
-                              <span style={{ fontSize: '13px' }}>{cell || 'N/A'}</span>
-                            )}
-                            thStyle={{
-                              cursor: 'pointer',
-                              userSelect: 'none',
-                              textAlign: 'center',
-                            }}
-                            columnClassName="sortable-column"
-                            tdStyle={{ textAlign: 'center', verticalAlign: 'middle' }}
-                          >
-                            <div
-                              style={{
-                                cursor: 'pointer',
-                                userSelect: 'none',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                              }}
-                            >
-                              <i className="bi bi-list-ol me-1 text-primary"></i>Items
-                            </div>
-                          </TableHeaderColumn>
-
-                          <TableHeaderColumn
-                            dataField="cartStatusType"
+                            dataField="orderStatus"
                             dataFormat={(cell) => formatStatusWithIcon(cell)}
+                            isKey
                             dataAlign="center"
                             headerAlign="center"
                             width="15%"
-                            thStyle={{
-                              cursor: 'pointer',
-                              userSelect: 'none',
-                              textAlign: 'center',
-                            }}
+                            thStyle={{ cursor: 'pointer', userSelect: 'none', textAlign: 'center' }}
                             columnClassName="sortable-column"
                             tdStyle={{ textAlign: 'center', verticalAlign: 'middle' }}
                           >
                             <div
-                              onClick={() => handleCartSort('cartStatusType')}
+                              onClick={() => handlePoSort('orderStatus')}
                               style={{
                                 cursor: 'pointer',
                                 userSelect: 'none',
@@ -1905,13 +2282,13 @@ const Classic = () => {
                                 justifyContent: 'center',
                               }}
                             >
-                              <i className="bi bi-flag me-1 text-primary"></i>Status{' '}
-                              {renderSortIcon('cartStatusType')}
+                              <i className="bi bi-flag me-1 text-primary"></i>Order Status{' '}
+                              {renderPoSortIcon('orderStatus')}
                             </div>
                           </TableHeaderColumn>
 
                           <TableHeaderColumn
-                            dataField="neededBy"
+                            dataField="deliveryDate"
                             dataAlign="center"
                             headerAlign="center"
                             dataFormat={(cell) => (
@@ -1919,17 +2296,13 @@ const Classic = () => {
                                 {formatDate(cell)}
                               </span>
                             )}
-                            width="10%"
-                            thStyle={{
-                              cursor: 'pointer',
-                              userSelect: 'none',
-                              textAlign: 'center',
-                            }}
+                            width="11%"
+                            thStyle={{ cursor: 'pointer', userSelect: 'none', textAlign: 'center' }}
                             columnClassName="sortable-column"
                             tdStyle={{ textAlign: 'center', verticalAlign: 'middle' }}
                           >
                             <div
-                              onClick={() => handleCartSort('neededBy')}
+                              onClick={() => handlePoSort('deliveryDate')}
                               style={{
                                 cursor: 'pointer',
                                 userSelect: 'none',
@@ -1938,25 +2311,23 @@ const Classic = () => {
                                 justifyContent: 'center',
                               }}
                             >
-                              <i className="bi bi-calendar-event me-1 text-primary"></i>Needed By{' '}
-                              {renderSortIcon('neededBy')}
+                              <i className="bi bi-truck me-1 text-primary"></i>Delivery{' '}
+                              {renderPoSortIcon('deliveryDate')}
                             </div>
                           </TableHeaderColumn>
 
                           <TableHeaderColumn
-                            dataField="createdBy"
-                            width="12%"
+                            dataField="buyerUser"
                             dataAlign="center"
                             headerAlign="center"
+                            width="12%"
                             dataFormat={(cell) => {
                               if (!cell) return <span className="text-muted">-</span>;
 
                               const fullText =
                                 `${cell.firstName} ${cell.lastName} (${cell.email})`.trim();
                               const displayText =
-                                fullText.length > 25
-                                  ? `${fullText.substring(0, 25)}...`
-                                  : fullText;
+                                fullText.length > 25 ? `${fullText.substring(0, 25)}...` : fullText;
                               return (
                                 <span
                                   style={{ cursor: 'default', fontSize: '13px' }}
@@ -1969,16 +2340,12 @@ const Classic = () => {
                                 </span>
                               );
                             }}
-                            thStyle={{
-                              cursor: 'pointer',
-                              userSelect: 'none',
-                              textAlign: 'center',
-                            }}
+                            thStyle={{ cursor: 'pointer', userSelect: 'none', textAlign: 'center' }}
                             columnClassName="sortable-column"
                             tdStyle={{ textAlign: 'center', verticalAlign: 'middle' }}
                           >
                             <div
-                              onClick={() => handleCartSort('createdBy')}
+                              onClick={() => handlePoSort('buyerUser')}
                               style={{
                                 cursor: 'pointer',
                                 userSelect: 'none',
@@ -1988,30 +2355,26 @@ const Classic = () => {
                               }}
                             >
                               <i className="bi bi-person me-1 text-primary"></i>Created By{' '}
-                              {renderSortIcon('createdBy')}
+                              {renderPoSortIcon('buyerUser')}
                             </div>
                           </TableHeaderColumn>
 
                           <TableHeaderColumn
-                            dataField="createdDate"
+                            dataField="orderPlacedDate"
                             dataAlign="center"
                             headerAlign="center"
-                            width="9%"
+                            width="10%"
                             dataFormat={(cell) => (
                               <span className="date-value" style={{ fontSize: '13px' }}>
                                 {formatDate(cell)}
                               </span>
                             )}
-                            thStyle={{
-                              cursor: 'pointer',
-                              userSelect: 'none',
-                              textAlign: 'center',
-                            }}
+                            thStyle={{ cursor: 'pointer', userSelect: 'none', textAlign: 'center' }}
                             columnClassName="sortable-column"
                             tdStyle={{ textAlign: 'center', verticalAlign: 'middle' }}
                           >
                             <div
-                              onClick={() => handleCartSort('createdDate')}
+                              onClick={() => handlePoSort('orderPlacedDate')}
                               style={{
                                 cursor: 'pointer',
                                 userSelect: 'none',
@@ -2021,782 +2384,408 @@ const Classic = () => {
                               }}
                             >
                               <i className="bi bi-calendar-plus me-1 text-primary"></i>Created{' '}
-                              {renderSortIcon('createdDate')}
+                              {renderPoSortIcon('orderPlacedDate')}
                             </div>
                           </TableHeaderColumn>
 
                           <TableHeaderColumn
-                            dataField="cartAmount"
-                            dataAlign="center"
-                            headerAlign="center"
-                            width="10%"
-                            dataFormat={(cell) => (
-                              <span className="currency-value">
-                                {new Intl.NumberFormat('en-US', {
-                                  style: 'currency',
-                                  currency: 'USD',
-                                  minimumFractionDigits: 2,
-                                  maximumFractionDigits: 2,
-                                }).format(cell || 0)}
-                              </span>
-                            )}
-                            thStyle={{
-                              cursor: 'pointer',
-                              userSelect: 'none',
-                              textAlign: 'center',
-                            }}
-                            columnClassName="sortable-column"
-                            tdStyle={{ textAlign: 'center', verticalAlign: 'middle' }}
-                          >
-                            <div
-                              style={{
-                                cursor: 'pointer',
-                                userSelect: 'none',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                              }}
-                            >
-                              <i className="bi bi-currency-dollar me-1 text-primary"></i>Amount
-                            </div>
-                          </TableHeaderColumn>
-
-                          <TableHeaderColumn
-                            dataField="actions"
-                            dataFormat={actionsFormatter}
+                            dataField="orderAmount"
                             dataAlign="center"
                             headerAlign="center"
                             width="12%"
+                            dataFormat={(cell, row) => (
+                              <span className="currency-value" style={{ fontSize: '12px' }}>
+                                {formatDualCurrency(
+                                  {
+                                    originalPrice: row.originalOrderAmount || cell,
+                                    originalCurrency: row.originalCurrencyCode,
+                                    convertedPrice: row.convertedOrderAmount,
+                                    convertedCurrency: row.convertedCurrencyCode,
+                                  },
+                                  getUserType()
+                                )}
+                              </span>
+                            )}
+                            thStyle={{ cursor: 'pointer', userSelect: 'none', textAlign: 'center' }}
+                            columnClassName="sortable-column"
+                            tdStyle={{ textAlign: 'center', verticalAlign: 'middle' }}
                           >
-                            <i className="bi bi-gear me-1 text-primary"></i>Actions
+                            <div
+                              onClick={() => handlePoSort('orderAmount')}
+                              style={{
+                                cursor: 'pointer',
+                                userSelect: 'none',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                              }}
+                            >
+                              <i className="bi bi-currency-dollar me-1 text-primary"></i>Amount{' '}
+                              {renderPoSortIcon('orderAmount')}
+                            </div>
+                          </TableHeaderColumn>
+
+                          <TableHeaderColumn
+                            width="10%"
+                            dataFormat={renderActionPOButtons}
+                            dataAlign="center"
+                            headerAlign="center"
+                            thStyle={{ textAlign: 'center' }}
+                            tdStyle={{ textAlign: 'center', verticalAlign: 'middle' }}
+                          >
+                            <div
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                              }}
+                            >
+                              <i className="bi bi-gear me-1 text-primary"></i>Actions
+                            </div>
                           </TableHeaderColumn>
                         </BootstrapTable>
                       </div>
-                    )}
-                  </div>
-                )}
-
-                {activeMainTab === 'purchaseOrders' && (
-                  <div className="tab-pane fade show active">
-                    {purchaseOrdersLoading && (
-                      <div className="text-center py-4">
-                        <div className="spinner-border text-primary" role="status">
-                          <span className="visually-hidden">Loading...</span>
+                    </div>
+                  )}
+                  {activeMainTab === 'rfqs' && (
+                    <div className="tab-pane fade show active">
+                      {rfqLoading ? (
+                        <div className="text-center p-4">
+                          <i className="fas fa-spinner fa-spin me-2"></i>
+                          Loading RFQs...
                         </div>
-                        <p className="mt-2 text-muted">Loading purchase orders...</p>
-                      </div>
-                    )}
-                    <div className="table-responsive">
-                      <BootstrapTable
-                        data={purchaseOrdersRaise}
-                        striped
-                        hover
-                        condensed
-                        pagination={purchaseOrdersTotalElements > purchaseOrdersPageSize}
-                        remote
-                        fetchInfo={{
-                          dataTotalSize: purchaseOrdersTotalElements,
-                        }}
-                        options={poOptions}
-                        tableHeaderClass="mb-0"
-                      >
-                        <TableHeaderColumn
-                          dataField="orderNo"
-                          dataAlign="center"
-                          headerAlign="center"
-                          width="10%"
-                          dataFormat={(cell) => (
-                            <span style={{ fontSize: '13px', color: '#495057' }}>
-                              {cell || '-'}
-                            </span>
-                          )}
-                          thStyle={{ cursor: 'pointer', userSelect: 'none', textAlign: 'center' }}
-                          columnClassName="sortable-column"
-                          tdStyle={{ textAlign: 'center', verticalAlign: 'middle' }}
-                        >
-                          <div
-                            onClick={() => handlePoSort('orderNo')}
-                            style={{
-                              cursor: 'pointer',
-                              userSelect: 'none',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
+                      ) : (
+                        <div className="table-responsive">
+                          <BootstrapTable
+                            data={rfqData}
+                            striped
+                            hover
+                            condensed
+                            pagination={rfqTotalElements > rfqPageSize}
+                            remote
+                            fetchInfo={{
+                              dataTotalSize: rfqTotalElements,
                             }}
+                            options={rfqOptions}
+                            tableHeaderClass="mb-0"
                           >
-                            <i className="bi bi-receipt me-1 text-primary"></i>Order No.{' '}
-                            {renderPoSortIcon('orderNo')}
-                          </div>
-                        </TableHeaderColumn>
+                            <TableHeaderColumn dataField="rfqId" isKey hidden>
+                              RFQ ID
+                            </TableHeaderColumn>
 
-                        <TableHeaderColumn
-                          dataField="cart"
-                          dataAlign="center"
-                          headerAlign="center"
-                          width="13%"
-                          dataFormat={(cell, row) => {
-                            if (row.cart) {
-                              return (
+                            <TableHeaderColumn
+                              dataField="rfqNumber"
+                              dataAlign="center"
+                              headerAlign="center"
+                              width="10%"
+                              dataFormat={(cell, row) => (
                                 <span
                                   style={{
-                                    cursor: 'pointer',
+                                    fontWeight: '600',
                                     color: '#009efb',
-                                    fontSize: '13px',
-                                    textDecoration: 'none',
-                                  }}
-                                  onMouseOver={(e) => {
-                                    e.target.style.textDecoration = 'underline';
-                                  }}
-                                  onMouseOut={(e) => {
-                                    e.target.style.textDecoration = 'none';
-                                  }}
-                                  onFocus={(e) => {
-                                    e.target.style.textDecoration = 'underline';
-                                  }}
-                                  onBlur={(e) => {
-                                    e.target.style.textDecoration = 'none';
-                                  }}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleNavigate(
-                                      row.cart.cartId,
-                                      row.shippingToAddress && row.shippingToAddress.addressId,
-                                      row.orderStatus,
-                                    );
-                                  }}
-                                  role="button"
-                                  tabIndex={0}
-                                  onKeyPress={(e) => {
-                                    if (e.key === 'Enter' || e.key === ' ') {
-                                      e.stopPropagation();
-                                      handleNavigate(
-                                        row.cart.cartId,
-                                        row.shippingToAddress && row.shippingToAddress.addressId,
-                                        row.orderStatus,
-                                      );
-                                    }
-                                  }}
-                                >
-                                  CART - {cell.cartNo}
-                                </span>
-                              );
-                            }
-                            if (row.rfq) {
-                              return (
-                                <span
-                                  style={{
                                     cursor: 'pointer',
-                                    color: '#009efb',
-                                    fontSize: '13px',
-                                    textDecoration: 'none',
                                   }}
-                                  onMouseOver={(e) => {
-                                    e.target.style.textDecoration = 'underline';
-                                  }}
-                                  onMouseOut={(e) => {
-                                    e.target.style.textDecoration = 'none';
-                                  }}
-                                  onFocus={(e) => {
-                                    e.target.style.textDecoration = 'underline';
-                                  }}
-                                  onBlur={(e) => {
-                                    e.target.style.textDecoration = 'none';
-                                  }}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleNavigateToRfq(row.rfq);
-                                  }}
-                                  role="button"
-                                  tabIndex={0}
-                                  onKeyPress={(e) => {
-                                    if (e.key === 'Enter' || e.key === ' ') {
-                                      e.stopPropagation();
-                                      handleNavigateToRfq(row.rfq);
-                                    }
-                                  }}
+                                  onClick={() => navigate(`/rfqDetails/${row.rfqId}`)}
                                 >
-                                  RFQ - {cell?.rfqNumber}
+                                  {cell || `RFQ-${row.rfqId}`}
                                 </span>
-                              );
-                            }
-                            return <span className="text-muted">-</span>;
-                          }}
-                          thStyle={{ cursor: 'pointer', userSelect: 'none', textAlign: 'center' }}
-                          columnClassName="sortable-column"
-                          tdStyle={{ textAlign: 'center', verticalAlign: 'middle' }}
-                        >
-                          <div
-                            onClick={() => handlePoSort('cart')}
-                            style={{
-                              cursor: 'pointer',
-                              userSelect: 'none',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                            }}
-                          >
-                            <i className="bi bi-diagram-3 me-1 text-primary"></i>Source{' '}
-                            {renderPoSortIcon('cart')}
-                          </div>
-                        </TableHeaderColumn>
-
-                        <TableHeaderColumn
-                          dataField="supplier"
-                          dataAlign="center"
-                          headerAlign="center"
-                          width="12%"
-                          dataFormat={(cell) => {
-                            const supplierName = cell?.displayName || cell?.name;
-                            if (!supplierName)
-                              return <span className="text-muted">-</span>;
-                            const displayText = supplierName.length > 15 ? `${supplierName.substring(0, 15)}...` : supplierName;
-                            return (
-                              <span title={supplierName} style={{ fontSize: '13px' }}>
-                                {displayText}
-                              </span>
-                            );
-                          }}
-                          thStyle={{ cursor: 'pointer', userSelect: 'none', textAlign: 'center' }}
-                          columnClassName="sortable-column"
-                          tdStyle={{ textAlign: 'center', verticalAlign: 'middle' }}
-                        >
-                          <div
-                            onClick={() => handlePoSort('supplier')}
-                            style={{
-                              cursor: 'pointer',
-                              userSelect: 'none',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                            }}
-                          >
-                            <i className="bi bi-building me-1 text-primary"></i>Supplier{' '}
-                            {renderPoSortIcon('supplier')}
-                          </div>
-                        </TableHeaderColumn>
-
-                        <TableHeaderColumn
-                          dataField="orderStatus"
-                          dataFormat={(cell) => formatStatusWithIcon(cell)}
-                          isKey
-                          dataAlign="center"
-                          headerAlign="center"
-                          width="15%"
-                          thStyle={{ cursor: 'pointer', userSelect: 'none', textAlign: 'center' }}
-                          columnClassName="sortable-column"
-                          tdStyle={{ textAlign: 'center', verticalAlign: 'middle' }}
-                        >
-                          <div
-                            onClick={() => handlePoSort('orderStatus')}
-                            style={{
-                              cursor: 'pointer',
-                              userSelect: 'none',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                            }}
-                          >
-                            <i className="bi bi-flag me-1 text-primary"></i>Order Status{' '}
-                            {renderPoSortIcon('orderStatus')}
-                          </div>
-                        </TableHeaderColumn>
-
-                        <TableHeaderColumn
-                          dataField="deliveryDate"
-                          dataAlign="center"
-                          headerAlign="center"
-                          dataFormat={(cell) => (
-                            <span className="date-value" style={{ fontSize: '13px' }}>
-                              {formatDate(cell)}
-                            </span>
-                          )}
-                          width="11%"
-                          thStyle={{ cursor: 'pointer', userSelect: 'none', textAlign: 'center' }}
-                          columnClassName="sortable-column"
-                          tdStyle={{ textAlign: 'center', verticalAlign: 'middle' }}
-                        >
-                          <div
-                            onClick={() => handlePoSort('deliveryDate')}
-                            style={{
-                              cursor: 'pointer',
-                              userSelect: 'none',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                            }}
-                          >
-                            <i className="bi bi-truck me-1 text-primary"></i>Delivery{' '}
-                            {renderPoSortIcon('deliveryDate')}
-                          </div>
-                        </TableHeaderColumn>
-
-                        <TableHeaderColumn
-                          dataField="buyerUser"
-                          dataAlign="center"
-                          headerAlign="center"
-                          width="12%"
-                          dataFormat={(cell) => {
-                            if (!cell) return <span className="text-muted">-</span>;
-
-                            const fullText =
-                              `${cell.firstName} ${cell.lastName} (${cell.email})`.trim();
-                            const displayText =
-                              fullText.length > 25 ? `${fullText.substring(0, 25)}...` : fullText;
-                            return (
-                              <span
-                                style={{ cursor: 'default', fontSize: '13px' }}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleTooltip(e, fullText);
+                              )}
+                              thStyle={{
+                                cursor: 'pointer',
+                                userSelect: 'none',
+                                textAlign: 'center',
+                              }}
+                              columnClassName="sortable-column"
+                              tdStyle={{ textAlign: 'center', verticalAlign: 'middle' }}
+                            >
+                              <div
+                                onClick={() => handleRfqSort('rfqNumber')}
+                                style={{
+                                  cursor: 'pointer',
+                                  userSelect: 'none',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
                                 }}
                               >
-                                {displayText}
-                              </span>
-                            );
-                          }}
-                          thStyle={{ cursor: 'pointer', userSelect: 'none', textAlign: 'center' }}
-                          columnClassName="sortable-column"
-                          tdStyle={{ textAlign: 'center', verticalAlign: 'middle' }}
-                        >
-                          <div
-                            onClick={() => handlePoSort('buyerUser')}
-                            style={{
-                              cursor: 'pointer',
-                              userSelect: 'none',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                            }}
-                          >
-                            <i className="bi bi-person me-1 text-primary"></i>Created By{' '}
-                            {renderPoSortIcon('buyerUser')}
-                          </div>
-                        </TableHeaderColumn>
+                                <i className="bi bi-hash me-1 text-primary"></i>RFQ #{' '}
+                                {renderRfqSortIcon('rfqNumber')}
+                              </div>
+                            </TableHeaderColumn>
 
-                        <TableHeaderColumn
-                          dataField="orderPlacedDate"
-                          dataAlign="center"
-                          headerAlign="center"
-                          width="10%"
-                          dataFormat={(cell) => (
-                            <span className="date-value" style={{ fontSize: '13px' }}>
-                              {formatDate(cell)}
-                            </span>
-                          )}
-                          thStyle={{ cursor: 'pointer', userSelect: 'none', textAlign: 'center' }}
-                          columnClassName="sortable-column"
-                          tdStyle={{ textAlign: 'center', verticalAlign: 'middle' }}
-                        >
-                          <div
-                            onClick={() => handlePoSort('orderPlacedDate')}
-                            style={{
-                              cursor: 'pointer',
-                              userSelect: 'none',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                            }}
-                          >
-                            <i className="bi bi-calendar-plus me-1 text-primary"></i>Created{' '}
-                            {renderPoSortIcon('orderPlacedDate')}
-                          </div>
-                        </TableHeaderColumn>
+                            <TableHeaderColumn
+                              dataField="title"
+                              dataAlign="center"
+                              headerAlign="center"
+                              width="15%"
+                              dataFormat={(cell) => {
+                                if (!cell) return <span className="text-muted">-</span>;
+                                const truncated =
+                                  cell.length > 20 ? `${cell.substring(0, 20)}...` : cell;
+                                return <span title={cell}>{truncated}</span>;
+                              }}
+                              thStyle={{
+                                cursor: 'pointer',
+                                userSelect: 'none',
+                                textAlign: 'center',
+                              }}
+                              columnClassName="sortable-column"
+                              tdStyle={{ textAlign: 'center', verticalAlign: 'middle' }}
+                            >
+                              <div
+                                onClick={() => handleRfqSort('title')}
+                                style={{
+                                  cursor: 'pointer',
+                                  userSelect: 'none',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}
+                              >
+                                <i className="bi bi-file-text me-1 text-primary"></i>Title{' '}
+                                {renderRfqSortIcon('title')}
+                              </div>
+                            </TableHeaderColumn>
 
-                        <TableHeaderColumn
-                          dataField="orderAmount"
-                          dataAlign="center"
-                          headerAlign="center"
-                          width="10%"
-                          dataFormat={(cell) => (
-                            <span className="currency-value">
-                              {new Intl.NumberFormat('en-US', {
-                                style: 'currency',
-                                currency: 'USD',
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2,
-                              }).format(cell || 0)}
-                            </span>
-                          )}
-                          thStyle={{ cursor: 'pointer', userSelect: 'none', textAlign: 'center' }}
-                          columnClassName="sortable-column"
-                          tdStyle={{ textAlign: 'center', verticalAlign: 'middle' }}
-                        >
-                          <div
-                            onClick={() => handlePoSort('orderAmount')}
-                            style={{
-                              cursor: 'pointer',
-                              userSelect: 'none',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                            }}
-                          >
-                            <i className="bi bi-currency-dollar me-1 text-primary"></i>Amount{' '}
-                            {renderPoSortIcon('orderAmount')}
-                          </div>
-                        </TableHeaderColumn>
+                            <TableHeaderColumn
+                              dataField="objective"
+                              dataAlign="center"
+                              headerAlign="center"
+                              width="20%"
+                              dataFormat={(cell) => {
+                                if (!cell) return <span className="text-muted">-</span>;
+                                const truncated =
+                                  cell.length > 30 ? `${cell.substring(0, 30)}...` : cell;
+                                return <span title={cell}>{truncated}</span>;
+                              }}
+                              thStyle={{
+                                cursor: 'pointer',
+                                userSelect: 'none',
+                                textAlign: 'center',
+                              }}
+                              columnClassName="sortable-column"
+                              tdStyle={{ textAlign: 'center', verticalAlign: 'middle' }}
+                            >
+                              <div
+                                onClick={() => handleRfqSort('objective')}
+                                style={{
+                                  cursor: 'pointer',
+                                  userSelect: 'none',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}
+                              >
+                                <i className="bi bi-bullseye me-1 text-primary"></i>Objective{' '}
+                                {renderRfqSortIcon('objective')}
+                              </div>
+                            </TableHeaderColumn>
 
-                        <TableHeaderColumn
-                          width="10%"
-                          dataFormat={renderActionPOButtons}
-                          dataAlign="center"
-                          headerAlign="center"
-                          thStyle={{ textAlign: 'center' }}
-                          tdStyle={{ textAlign: 'center', verticalAlign: 'middle' }}
-                        >
-                          <div
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                            }}
-                          >
-                            <i className="bi bi-gear me-1 text-primary"></i>Actions
-                          </div>
-                        </TableHeaderColumn>
-                      </BootstrapTable>
+                            <TableHeaderColumn
+                              dataField="suppliers"
+                              dataAlign="center"
+                              headerAlign="center"
+                              width="10%"
+                              dataFormat={(cell) => (
+                                <span style={{ fontSize: '13px' }}>{cell ? cell.length : 0}</span>
+                              )}
+                              thStyle={{
+                                cursor: 'pointer',
+                                userSelect: 'none',
+                                textAlign: 'center',
+                              }}
+                              columnClassName="sortable-column"
+                              tdStyle={{ textAlign: 'center', verticalAlign: 'middle' }}
+                            >
+                              <div
+                                style={{
+                                  cursor: 'pointer',
+                                  userSelect: 'none',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}
+                              >
+                                <i className="bi bi-building me-1 text-primary"></i>Suppliers
+                              </div>
+                            </TableHeaderColumn>
+
+                            <TableHeaderColumn
+                              dataField="rfqItems"
+                              dataAlign="center"
+                              headerAlign="center"
+                              width="10%"
+                              dataFormat={(cell) => (
+                                <span style={{ fontSize: '13px' }}>{cell ? cell.length : 0}</span>
+                              )}
+                              thStyle={{
+                                cursor: 'pointer',
+                                userSelect: 'none',
+                                textAlign: 'center',
+                              }}
+                              columnClassName="sortable-column"
+                              tdStyle={{ textAlign: 'center', verticalAlign: 'middle' }}
+                            >
+                              <div
+                                style={{
+                                  cursor: 'pointer',
+                                  userSelect: 'none',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}
+                              >
+                                <i className="bi bi-list-ol me-1 text-primary"></i>Items{' '}
+                              </div>
+                            </TableHeaderColumn>
+
+                            <TableHeaderColumn
+                              dataField="rfqStatus"
+                              dataAlign="center"
+                              headerAlign="center"
+                              width="15%"
+                              dataFormat={(cell) => formatStatusWithIcon(cell)}
+                              thStyle={{
+                                cursor: 'pointer',
+                                userSelect: 'none',
+                                textAlign: 'center',
+                              }}
+                              columnClassName="sortable-column"
+                              tdStyle={{ textAlign: 'center', verticalAlign: 'middle' }}
+                            >
+                              <div
+                                style={{
+                                  cursor: 'pointer',
+                                  userSelect: 'none',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}
+                              >
+                                <i className="bi bi-flag me-1 text-primary"></i>Status{' '}
+                              </div>
+                            </TableHeaderColumn>
+
+                            <TableHeaderColumn
+                              dataField="createdDate"
+                              dataAlign="center"
+                              headerAlign="center"
+                              width="10%"
+                              dataFormat={(cell) => (
+                                <span className="date-value" style={{ fontSize: '13px' }}>
+                                  {formatDate(cell)}
+                                </span>
+                              )}
+                              thStyle={{
+                                cursor: 'pointer',
+                                userSelect: 'none',
+                                textAlign: 'center',
+                              }}
+                              columnClassName="sortable-column"
+                              tdStyle={{ textAlign: 'center', verticalAlign: 'middle' }}
+                            >
+                              <div
+                                onClick={() => handleRfqSort('createdDate')}
+                                style={{
+                                  cursor: 'pointer',
+                                  userSelect: 'none',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}
+                              >
+                                <i className="bi bi-calendar-plus me-1 text-primary"></i>Created{' '}
+                                {renderRfqSortIcon('createdDate')}
+                              </div>
+                            </TableHeaderColumn>
+
+                            <TableHeaderColumn
+                              dataField="requiredAt"
+                              dataAlign="center"
+                              headerAlign="center"
+                              width="10%"
+                              dataFormat={(cell) => (
+                                <span className="date-value" style={{ fontSize: '13px' }}>
+                                  {formatDate(cell)}
+                                </span>
+                              )}
+                              thStyle={{
+                                cursor: 'pointer',
+                                userSelect: 'none',
+                                textAlign: 'center',
+                              }}
+                              columnClassName="sortable-column"
+                              tdStyle={{ textAlign: 'center', verticalAlign: 'middle' }}
+                            >
+                              <div
+                                onClick={() => handleRfqSort('requiredAt')}
+                                style={{
+                                  cursor: 'pointer',
+                                  userSelect: 'none',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}
+                              >
+                                <i className="bi bi-calendar-event me-1 text-primary"></i>Required{' '}
+                                {renderRfqSortIcon('requiredAt')}
+                              </div>
+                            </TableHeaderColumn>
+
+                            <TableHeaderColumn
+                              dataFormat={renderActionRFQButtons}
+                              dataAlign="center"
+                              headerAlign="center"
+                              width="10%"
+                            >
+                              <i className="bi bi-gear me-1 text-primary"></i>Actions
+                            </TableHeaderColumn>
+                          </BootstrapTable>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+                <QueryModal
+                  isOpen={queryModalOpen}
+                  onClose={closeQueryModal}
+                  onSubmit={handleSubmitQuery}
+                  previousQueries={previousQueries}
+                  queryInput={queryInput}
+                  setQueryInput={setQueryInput}
+                  onFileUploadSuccess={handleFileUploadSuccess}
+                />
+              </>
+            )}
+            {activeDashboardSection === 'completed' && (
+              <div>
+                <div className="d-flex justify-content-between align-items-center mb-3">
+                  <div className="d-flex align-items-center gap-3">
+                    <div
+                      className="icon-wrapper"
+                      style={{
+                        width: '40px',
+                        height: '40px',
+                        backgroundColor: '#009efb',
+                        borderRadius: '8px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        border: '2px solid rgba(0, 158, 251, 0.1)',
+                      }}
+                    >
+                      <i className="fas fa-check-circle text-white"></i>
+                    </div>
+                    <div>
+                      <h4 className="mb-1">Your Processed Items</h4>
+                      <p className="text-muted mb-0 small">Items you have reviewed and processed</p>
                     </div>
                   </div>
-                )}
-                {activeMainTab === 'rfqs' && (
-                  <div className="tab-pane fade show active">
-                    {rfqLoading ? (
-                      <div className="text-center p-4">
-                        <i className="fas fa-spinner fa-spin me-2"></i>
-                        Loading RFQs...
-                      </div>
-                    ) : (
-                      <div className="table-responsive">
-                        <BootstrapTable
-                          data={rfqData}
-                          striped
-                          hover
-                          condensed
-                          pagination={rfqTotalElements > rfqPageSize}
-                          remote
-                          fetchInfo={{
-                            dataTotalSize: rfqTotalElements,
-                          }}
-                          options={rfqOptions}
-                          tableHeaderClass="mb-0"
-                        >
-                          <TableHeaderColumn dataField="rfqId" isKey hidden>
-                            RFQ ID
-                          </TableHeaderColumn>
-
-                          <TableHeaderColumn
-                            dataField="rfqNumber"
-                            dataAlign="center"
-                            headerAlign="center"
-                            width="10%"
-                            dataFormat={(cell, row) => (
-                              <span
-                                style={{
-                                  fontWeight: '600',
-                                  color: '#009efb',
-                                  cursor: 'pointer',
-                                }}
-                                onClick={() => navigate(`/rfqDetails/${row.rfqId}`)}
-                              >
-                                {cell || `RFQ-${row.rfqId}`}
-                              </span>
-                            )}
-                            thStyle={{
-                              cursor: 'pointer',
-                              userSelect: 'none',
-                              textAlign: 'center',
-                            }}
-                            columnClassName="sortable-column"
-                            tdStyle={{ textAlign: 'center', verticalAlign: 'middle' }}
-                          >
-                            <div
-                              onClick={() => handleRfqSort('rfqNumber')}
-                              style={{
-                                cursor: 'pointer',
-                                userSelect: 'none',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                              }}
-                            >
-                              <i className="bi bi-hash me-1 text-primary"></i>RFQ #{' '}
-                              {renderRfqSortIcon('rfqNumber')}
-                            </div>
-                          </TableHeaderColumn>
-
-                          <TableHeaderColumn
-                            dataField="title"
-                            dataAlign="center"
-                            headerAlign="center"
-                            width="15%"
-                            dataFormat={(cell) => {
-                              if (!cell) return <span className="text-muted">-</span>;
-                              const truncated =
-                                cell.length > 20 ? `${cell.substring(0, 20)}...` : cell;
-                              return <span title={cell}>{truncated}</span>;
-                            }}
-                            thStyle={{
-                              cursor: 'pointer',
-                              userSelect: 'none',
-                              textAlign: 'center',
-                            }}
-                            columnClassName="sortable-column"
-                            tdStyle={{ textAlign: 'center', verticalAlign: 'middle' }}
-                          >
-                            <div
-                              onClick={() => handleRfqSort('title')}
-                              style={{
-                                cursor: 'pointer',
-                                userSelect: 'none',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                              }}
-                            >
-                              <i className="bi bi-file-text me-1 text-primary"></i>Title{' '}
-                              {renderRfqSortIcon('title')}
-                            </div>
-                          </TableHeaderColumn>
-
-                          <TableHeaderColumn
-                            dataField="objective"
-                            dataAlign="center"
-                            headerAlign="center"
-                            width="20%"
-                            dataFormat={(cell) => {
-                              if (!cell) return <span className="text-muted">-</span>;
-                              const truncated =
-                                cell.length > 30 ? `${cell.substring(0, 30)}...` : cell;
-                              return <span title={cell}>{truncated}</span>;
-                            }}
-                            thStyle={{
-                              cursor: 'pointer',
-                              userSelect: 'none',
-                              textAlign: 'center',
-                            }}
-                            columnClassName="sortable-column"
-                            tdStyle={{ textAlign: 'center', verticalAlign: 'middle' }}
-                          >
-                            <div
-                              onClick={() => handleRfqSort('objective')}
-                              style={{
-                                cursor: 'pointer',
-                                userSelect: 'none',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                              }}
-                            >
-                              <i className="bi bi-bullseye me-1 text-primary"></i>Objective{' '}
-                              {renderRfqSortIcon('objective')}
-                            </div>
-                          </TableHeaderColumn>
-
-                          <TableHeaderColumn
-                            dataField="suppliers"
-                            dataAlign="center"
-                            headerAlign="center"
-                            width="10%"
-                            dataFormat={(cell) => (
-                              <span style={{ fontSize: '13px' }}>{cell ? cell.length : 0}</span>
-                            )}
-                            thStyle={{
-                              cursor: 'pointer',
-                              userSelect: 'none',
-                              textAlign: 'center',
-                            }}
-                            columnClassName="sortable-column"
-                            tdStyle={{ textAlign: 'center', verticalAlign: 'middle' }}
-                          >
-                            <div
-                              style={{
-                                cursor: 'pointer',
-                                userSelect: 'none',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                              }}
-                            >
-                              <i className="bi bi-building me-1 text-primary"></i>Suppliers
-                            </div>
-                          </TableHeaderColumn>
-
-                          <TableHeaderColumn
-                            dataField="rfqItems"
-                            dataAlign="center"
-                            headerAlign="center"
-                            width="10%"
-                            dataFormat={(cell) => (
-                              <span style={{ fontSize: '13px' }}>{cell ? cell.length : 0}</span>
-                            )}
-                            thStyle={{
-                              cursor: 'pointer',
-                              userSelect: 'none',
-                              textAlign: 'center',
-                            }}
-                            columnClassName="sortable-column"
-                            tdStyle={{ textAlign: 'center', verticalAlign: 'middle' }}
-                          >
-                            <div
-                              style={{
-                                cursor: 'pointer',
-                                userSelect: 'none',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                              }}
-                            >
-                              <i className="bi bi-list-ol me-1 text-primary"></i>Items{' '}
-                            </div>
-                          </TableHeaderColumn>
-
-                          <TableHeaderColumn
-                            dataField="rfqStatus"
-                            dataAlign="center"
-                            headerAlign="center"
-                            width="15%"
-                            dataFormat={(cell) => formatStatusWithIcon(cell)}
-                            thStyle={{
-                              cursor: 'pointer',
-                              userSelect: 'none',
-                              textAlign: 'center',
-                            }}
-                            columnClassName="sortable-column"
-                            tdStyle={{ textAlign: 'center', verticalAlign: 'middle' }}
-                          >
-                            <div
-                              style={{
-                                cursor: 'pointer',
-                                userSelect: 'none',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                              }}
-                            >
-                              <i className="bi bi-flag me-1 text-primary"></i>Status{' '}
-                            </div>
-                          </TableHeaderColumn>
-
-                          <TableHeaderColumn
-                            dataField="createdDate"
-                            dataAlign="center"
-                            headerAlign="center"
-                            width="10%"
-                            dataFormat={(cell) => (
-                              <span className="date-value" style={{ fontSize: '13px' }}>
-                                {formatDate(cell)}
-                              </span>
-                            )}
-                            thStyle={{
-                              cursor: 'pointer',
-                              userSelect: 'none',
-                              textAlign: 'center',
-                            }}
-                            columnClassName="sortable-column"
-                            tdStyle={{ textAlign: 'center', verticalAlign: 'middle' }}
-                          >
-                            <div
-                              onClick={() => handleRfqSort('createdDate')}
-                              style={{
-                                cursor: 'pointer',
-                                userSelect: 'none',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                              }}
-                            >
-                              <i className="bi bi-calendar-plus me-1 text-primary"></i>Created{' '}
-                              {renderRfqSortIcon('createdDate')}
-                            </div>
-                          </TableHeaderColumn>
-
-                          <TableHeaderColumn
-                            dataField="requiredAt"
-                            dataAlign="center"
-                            headerAlign="center"
-                            width="10%"
-                            dataFormat={(cell) => (
-                              <span className="date-value" style={{ fontSize: '13px' }}>
-                                {formatDate(cell)}
-                              </span>
-                            )}
-                            thStyle={{
-                              cursor: 'pointer',
-                              userSelect: 'none',
-                              textAlign: 'center',
-                            }}
-                            columnClassName="sortable-column"
-                            tdStyle={{ textAlign: 'center', verticalAlign: 'middle' }}
-                          >
-                            <div
-                              onClick={() => handleRfqSort('requiredAt')}
-                              style={{
-                                cursor: 'pointer',
-                                userSelect: 'none',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                              }}
-                            >
-                              <i className="bi bi-calendar-event me-1 text-primary"></i>Required{' '}
-                              {renderRfqSortIcon('requiredAt')}
-                            </div>
-                          </TableHeaderColumn>
-
-                          <TableHeaderColumn
-                            dataFormat={renderActionRFQButtons}
-                            dataAlign="center"
-                            headerAlign="center"
-                            width="10%"
-                          >
-                            <i className="bi bi-gear me-1 text-primary"></i>Actions
-                          </TableHeaderColumn>
-                        </BootstrapTable>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-              <QueryModal
-                isOpen={queryModalOpen}
-                onClose={closeQueryModal}
-                onSubmit={handleSubmitQuery}
-                previousQueries={previousQueries}
-                queryInput={queryInput}
-                setQueryInput={setQueryInput}
-                onFileUploadSuccess={handleFileUploadSuccess}
-              />
-            </>
-          )}
-          {activeDashboardSection === 'completed' && (
-            <div>
-              <div className="d-flex justify-content-between align-items-center mb-3">
-                <div className="d-flex align-items-center gap-3">
-                  <div
-                    className="icon-wrapper"
-                    style={{
-                      width: '40px',
-                      height: '40px',
-                      backgroundColor: '#009efb',
-                      borderRadius: '8px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      border: '2px solid rgba(0, 158, 251, 0.1)',
-                    }}
-                  >
-                    <i className="fas fa-check-circle text-white"></i>
-                  </div>
-                  <div>
-                    <h4 className="mb-1">Your Processed Items</h4>
-                    <p className="text-muted mb-0 small">Items you have reviewed and processed</p>
-                  </div>
                 </div>
-              </div>
-              <div className="nav nav-tabs mb-3" role="tablist">
-                <button
-                  className={`nav-link ${activeTab2 === 'approvedRequisitions' ? 'active' : ''}`}
-                  onClick={() => { setActiveTab2('approvedRequisitions'); changeSubTabWithCleanUrl('tab2', 'approvedRequisitions'); }}
+                <div className="nav nav-tabs mb-3" role="tablist">
+                  <button
+                    className={`nav-link ${activeTab2 === 'approvedRequisitions' ? 'active' : ''}`}
+                    onClick={() => { setActiveTab2('approvedRequisitions'); changeSubTabWithCleanUrl('tab2', 'approvedRequisitions'); }}
                   type="button"
                   style={{
                     border: 'none',
@@ -2945,15 +2934,18 @@ const Classic = () => {
                               dataField="totalAmount"
                               dataAlign="center"
                               headerAlign="center"
-                              width="12%"
-                              dataFormat={(cell) => (
-                                <span className="currency-value">
-                                  {new Intl.NumberFormat('en-US', {
-                                    style: 'currency',
-                                    currency: 'USD',
-                                    minimumFractionDigits: 2,
-                                    maximumFractionDigits: 2,
-                                  }).format(cell || 0)}
+                              width="14%"
+                              dataFormat={(cell, row) => (
+                                <span className="currency-value" style={{ fontSize: '12px' }}>
+                                  {row.convertedOrderAmount ? formatDualCurrency(
+                                    {
+                                      originalPrice: row.originalOrderAmount || cell,
+                                      originalCurrency: row.originalCurrencyCode || getCompanyCurrency(),
+                                      convertedPrice: row.convertedOrderAmount,
+                                      convertedCurrency: row.convertedCurrencyCode || getCompanyCurrency(),
+                                    },
+                                    getUserType()
+                                  ) : formatCurrency(cell || 0)}
                                 </span>
                               )}
                             >
@@ -3277,15 +3269,18 @@ const Classic = () => {
                               dataField="cartAmount"
                               dataAlign="center"
                               headerAlign="center"
-                              width="12%"
-                              dataFormat={(cell) => (
-                                <span className="currency-value">
-                                  {new Intl.NumberFormat('en-US', {
-                                    style: 'currency',
-                                    currency: 'USD',
-                                    minimumFractionDigits: 2,
-                                    maximumFractionDigits: 2,
-                                  }).format(cell || 0)}
+                              width="14%"
+                              dataFormat={(cell, row) => (
+                                <span className="currency-value" style={{ fontSize: '12px' }}>
+                                  {formatDualCurrency(
+                                    {
+                                      originalPrice: row.originalCartAmount || cell,
+                                      originalCurrency: row.originalCurrencyCode,
+                                      convertedPrice: row.convertedCartAmount,
+                                      convertedCurrency: row.convertedCurrencyCode,
+                                    },
+                                    getUserType()
+                                  )}
                                 </span>
                               )}
                             >
@@ -3381,9 +3376,9 @@ const Classic = () => {
                 )}
               </div>
             </div>
-          )}
-        </CardBody>
-      </Card>
+            )}
+          </CardBody>
+        </Card>
       {announcements.length > 0 && (
         <div className={`announcement-panel ${showAnnouncements ? 'show' : ''}`}>
           <div
@@ -3443,8 +3438,6 @@ const Classic = () => {
           {unreadCount > 0 && <span className="announcemnt-badge">{unreadCount}</span>}
         </div>
       )}
-      {/* ChatBot Component - Only visible on Dashboard */}
-      <ChatBot />
     </div>
   );
 };

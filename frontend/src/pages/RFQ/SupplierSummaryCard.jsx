@@ -1,6 +1,7 @@
 import React from "react";
 import { Card, CardBody, Badge } from "reactstrap";
 import { FaTrophy, FaCheck, FaStar } from "react-icons/fa";
+import { formatCurrency } from "../../utils/currencyUtils";
 
 /**
  * SupplierSummaryCard - Displays a compact summary card for each supplier
@@ -78,7 +79,7 @@ const SupplierSummaryCard = ({
           <div>
             <small className="text-muted d-block" style={{ fontSize: "10px" }}>Total</small>
             <span className={`fw-bold ${isLowestBid && !isRejected ? "text-success" : ""}`} style={{ fontSize: "14px" }}>
-              ${supplierTotal.toFixed(2)}
+              {formatCurrency(supplierTotal, supplier.supplierCurrency || "USD")}
             </span>
           </div>
           {selectedItemsCount > 0 && (

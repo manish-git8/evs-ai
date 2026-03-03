@@ -1,12 +1,20 @@
-// Currency formatting
-export const formatCurrency = (amount, currency = 'USD') => {
+import { getCompanyCurrency, getCurrencySymbol } from '../../localStorageUtil';
+
+// Currency formatting using company's configured currency
+export const formatCurrency = (amount, currencyCode) => {
   if (amount === null || amount === undefined) return 'N/A';
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency,
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount);
+  const code = currencyCode || getCompanyCurrency() || 'INR';
+  const symbol = getCurrencySymbol(code);
+
+  try {
+    const formatter = new Intl.NumberFormat('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+    return `${symbol}${formatter.format(Number(amount))}`;
+  } catch (error) {
+    return `${symbol}${Number(amount).toFixed(2)}`;
+  }
 };
 
 // Number formatting

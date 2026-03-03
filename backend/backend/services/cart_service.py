@@ -555,7 +555,6 @@ async def approve_cart(token: str, company_id: int, target_id: int, user_id: int
     try:
         client = get_http_client()
         url = f"{AUTH_API_BASE_URL}/company/{company_id}/approval/indent/target/{target_id}/approve"
-        print(f"[CART-SERVICE-APPROVE] URL={url}, decision={decision}, userId={user_id}, firstName={first_name}")
         
         # Prepare request body as per API specification
         request_body = {
@@ -578,7 +577,6 @@ async def approve_cart(token: str, company_id: int, target_id: int, user_id: int
             json=request_body,
             timeout=30.0
         )
-        print(f"[CART-SERVICE-APPROVE] Response status={response.status_code}, body={response.text[:300]}")
         
         if response.status_code == 200 or response.status_code == 201:
             try:

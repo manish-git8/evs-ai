@@ -1,6 +1,7 @@
 import React from "react";
 import { Button, Spinner } from "reactstrap";
 import { FaCheck, FaShoppingCart, FaFileSignature } from "react-icons/fa";
+import { formatCurrency } from "../../utils/currencyUtils";
 
 /**
  * SelectionSummaryBar - Sticky bar showing current selection summary and actions
@@ -9,6 +10,7 @@ import { FaCheck, FaShoppingCart, FaFileSignature } from "react-icons/fa";
 const SelectionSummaryBar = ({
   selectedItemsCount,
   totalValue,
+  totalValueCurrency = 'USD',
   suppliersWithSelections,
   onRequestSignoff,
   isSignoffRequested,
@@ -90,7 +92,7 @@ const SelectionSummaryBar = ({
           <div className="text-end">
             <div style={{ fontSize: "11px", opacity: 0.9 }}>Total Value</div>
             <div className="fw-bold" style={{ fontSize: "20px" }}>
-              ${totalValue.toFixed(2)}
+              {formatCurrency(totalValue, totalValueCurrency)}
             </div>
           </div>
 

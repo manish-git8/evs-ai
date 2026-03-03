@@ -6,6 +6,7 @@ import { Card, CardBody, Row, Col, FormGroup, Label, Input, FormText, Button } f
 import { useNavigate, useParams } from 'react-router-dom';
 import * as Yup from 'yup';
 import { Formik, Form, Field, ErrorMessage, useFormikContext } from 'formik';
+import Swal from 'sweetalert2';
 import UserService from '../../services/UserService';
 import MasterDataService from '../../services/MasterDataService';
 import CompanyService from '../../services/CompanyService';
@@ -13,10 +14,12 @@ import FileUploadService from '../../services/FileUploadService';
 import '../CompanyManagement/ReactBootstrapTable.scss';
 import { getUserRole, getEntityType } from '../localStorageUtil';
 import getAvailableRoles from '../../utils/roleUtils';
+import { useFeatureFlags } from '../../hooks/useFeatureFlags';
 
 const UserRegistration = () => {
   const navigate = useNavigate();
   const entityType = getEntityType();
+  const { isBlocked, getUsage, getFeature } = useFeatureFlags();
   const [userData, setUserData] = useState(null);
   const { userId, companyId, userEntityType } = useParams();
   const [parentIds, setParentIds] = useState([]);

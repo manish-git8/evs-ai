@@ -27,6 +27,7 @@ import LocationService from '../../services/LocationService';
 import CartService from '../../services/CartService';
 import ProjectService from '../../services/ProjectService';
 import CompanyService from '../../services/CompanyService';
+import { getCompanyCurrency, formatCurrency } from '../localStorageUtil';
 
 const ProductDetails = () => {
   const useQuery = () => {
@@ -207,7 +208,7 @@ const ProductDetails = () => {
       qty: quantity,
       price: product.UnitPrice,
       unitOfMeasure: product.UnitOfMeasurement || 'piece',
-      currencyCode: product.Currency || 'USD',
+      currencyCode: product.Currency || getCompanyCurrency(),
       internalBuyerQuoteFile: 0,
       priceUpdate: false,
       classId,
@@ -318,7 +319,7 @@ const ProductDetails = () => {
                   {product?.Description ||
                     'Experience luxury and style with our Elegant Leather Jacket. Crafted from premium leather, this jacket features a timeless design that combines comfort with sophistication.'}
                 </CardText>
-                <h4 className="text-muted mt-3">${product?.UnitPrice?.toFixed(2) || 'N/A'}</h4>
+                <h4 className="text-muted mt-3">{product?.UnitPrice ? formatCurrency(product.UnitPrice) : 'N/A'}</h4>
 
                 <div className="d-flex align-items-center mb-3">
                   <Button

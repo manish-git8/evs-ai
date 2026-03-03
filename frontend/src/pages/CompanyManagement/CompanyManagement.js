@@ -43,11 +43,18 @@ const CompanyManagement = () => {
     setSortOrder(sortOrder);
   };
 
+  const handleRowClick = (row) => {
+    if (!isImportMode && !isUploading && !isProcessingFile) {
+      navigate(`/company-management/${row.companyId}`);
+    }
+  };
+
   const options = {
     paginationShowsTotal: false,
     hideSizePerPage: true,
     paginationPosition: 'bottom',
     onSortChange: onSortChange,
+    onRowClick: handleRowClick,
   };
 
   const fetchCategories = async () => {
@@ -250,7 +257,10 @@ const CompanyManagement = () => {
         <button
           type="button"
           className="btn btn-sm btn-primary me-2 action-button-edit"
-          onClick={() => handleEdit(row.companyId)}
+          onClick={(e) => {
+            e.stopPropagation();
+            handleEdit(row.companyId);
+          }}
           disabled={isUploading || isProcessingFile}
         >
           <Edit size={14} />
@@ -258,7 +268,10 @@ const CompanyManagement = () => {
         <button
           type="button"
           className="btn btn-sm btn-danger action-button-delete"
-          onClick={() => handleDelete(row.companyId)}
+          onClick={(e) => {
+            e.stopPropagation();
+            handleDelete(row.companyId);
+          }}
           disabled={isUploading || isProcessingFile}
         >
           <Trash size={14} />
@@ -1172,7 +1185,7 @@ const CompanyManagement = () => {
                 </div>
               </div>
             ) : (
-              <div className="table-responsive">
+              <div className="table-responsive clickable-rows">
                 <BootstrapTable
                   key={`main-${tableKey}`}
                   striped

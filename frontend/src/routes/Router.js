@@ -219,6 +219,29 @@ const BillingInvoices = Loadable(lazy(() => import('../pages/Billing/BillingInvo
 const AdminSubscriptionManagement = Loadable(
   lazy(() => import('../pages/Billing/AdminSubscriptionManagement')),
 );
+const AdminPlanList = Loadable(
+  lazy(() => import('../pages/Billing/AdminPlanList')),
+);
+const AdminPlanView = Loadable(
+  lazy(() => import('../pages/Billing/AdminPlanView')),
+);
+const AdminPlanForm = Loadable(
+  lazy(() => import('../pages/Billing/AdminPlanForm')),
+);
+const AdminInvoiceManagement = Loadable(
+  lazy(() => import('../pages/Billing/AdminInvoiceManagement')),
+);
+const AdminUsageManagement = Loadable(
+  lazy(() => import('../pages/Billing/AdminUsageManagement')),
+);
+
+const AdminCompanyView = Loadable(
+  lazy(() => import('../pages/CompanyManagement/AdminCompanyView')),
+);
+
+const AdminSupplierView = Loadable(
+  lazy(() => import('../pages/SupplierManagement/AdminSupplierView')),
+);
 
 /***** Auth Pages ****/
 const Error404 = Loadable(lazy(() => import('../pages/Error/Error')));
@@ -363,6 +386,18 @@ const ThemeRoutes = [
           />
         ),
       },
+      {
+        path: '/company-management/:companyId',
+        name: 'Admin Company View',
+        exact: true,
+        element: (
+          <PrivateRoute
+            element={<AdminCompanyView />}
+            allowedEntities={['ADMIN']}
+            allowedRoles={['ADMIN']}
+          />
+        ),
+      },
 
       {
         path: '/company-registration',
@@ -384,6 +419,79 @@ const ThemeRoutes = [
         element: (
           <PrivateRoute
             element={<AdminSubscriptionManagement />}
+            allowedEntities={['ADMIN']}
+            allowedRoles={['ADMIN']}
+          />
+        ),
+      },
+
+      {
+        path: '/plan-management',
+        name: 'adminPlanList',
+        exact: true,
+        element: (
+          <PrivateRoute
+            element={<AdminPlanList />}
+            allowedEntities={['ADMIN']}
+            allowedRoles={['ADMIN']}
+          />
+        ),
+      },
+      {
+        path: '/plan-management/create',
+        name: 'adminPlanCreate',
+        exact: true,
+        element: (
+          <PrivateRoute
+            element={<AdminPlanForm />}
+            allowedEntities={['ADMIN']}
+            allowedRoles={['ADMIN']}
+          />
+        ),
+      },
+      {
+        path: '/plan-management/:planId',
+        name: 'adminPlanView',
+        exact: true,
+        element: (
+          <PrivateRoute
+            element={<AdminPlanView />}
+            allowedEntities={['ADMIN']}
+            allowedRoles={['ADMIN']}
+          />
+        ),
+      },
+      {
+        path: '/plan-management/:planId/edit',
+        name: 'adminPlanEdit',
+        exact: true,
+        element: (
+          <PrivateRoute
+            element={<AdminPlanForm />}
+            allowedEntities={['ADMIN']}
+            allowedRoles={['ADMIN']}
+          />
+        ),
+      },
+      {
+        path: '/invoice-management',
+        name: 'adminInvoiceManagement',
+        exact: true,
+        element: (
+          <PrivateRoute
+            element={<AdminInvoiceManagement />}
+            allowedEntities={['ADMIN']}
+            allowedRoles={['ADMIN']}
+          />
+        ),
+      },
+      {
+        path: '/usage-management',
+        name: 'adminUsageManagement',
+        exact: true,
+        element: (
+          <PrivateRoute
+            element={<AdminUsageManagement />}
             allowedEntities={['ADMIN']}
             allowedRoles={['ADMIN']}
           />
@@ -601,6 +709,18 @@ const ThemeRoutes = [
         ),
       },
       {
+        path: '/supplier-management/:supplierId',
+        name: 'Admin Supplier View',
+        exact: true,
+        element: (
+          <PrivateRoute
+            element={<AdminSupplierView />}
+            allowedEntities={['ADMIN']}
+            allowedRoles={['ADMIN']}
+          />
+        ),
+      },
+      {
         path: '/user-management',
         name: 'User Management',
         exact: true,
@@ -739,7 +859,7 @@ const ThemeRoutes = [
           <PrivateRoute
             element={<RfqApprovalDetails />}
             allowedEntities={['COMPANY']}
-            allowedRoles={['COMPANY_ADMIN', 'BUYER', 'ACCOUNT_PAYABLE']}
+            allowedRoles={['COMPANY_ADMIN', 'BUYER', 'ACCOUNT_PAYABLE', 'RECEIVER']}
           />
         ),
       },

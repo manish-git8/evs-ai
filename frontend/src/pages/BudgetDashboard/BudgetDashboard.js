@@ -5,7 +5,7 @@ import { Row, Col, Card, CardBody, CardTitle, Badge } from 'reactstrap';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Area, AreaChart } from 'recharts';
 import BudgetService from '../../services/BudgetService';
 import ProjectService from '../../services/ProjectService';
-import { getEntityId } from '../localStorageUtil';
+import { getEntityId, formatCurrency, getCurrencySymbol, getCompanyCurrency } from '../localStorageUtil';
 import ComponentCard from '../../components/ComponentCard';
 import BudgetActivityFeed from './BudgetActivityFeed';
 
@@ -50,12 +50,7 @@ const BudgetDashboard = () => {
     fetchDashboardData();
   }, []);
 
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(amount);
-  };
+  // formatCurrency is imported from localStorageUtil and uses company currency
 
   // Enhanced color palette for better visual appeal
   const COLORS = ['#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#84cc16'];
@@ -538,7 +533,7 @@ const BudgetDashboard = () => {
                   />
                   <YAxis 
                     fontSize={12}
-                    tickFormatter={(value) => `$${(value / 1000).toFixed(0)}K`}
+                    tickFormatter={(value) => `${getCurrencySymbol(getCompanyCurrency())}${(value / 1000).toFixed(0)}K`}
                   />
                   <Tooltip 
                     formatter={(value, name) => [formatCurrency(value), name]} 
@@ -793,7 +788,7 @@ const BudgetDashboard = () => {
                   />
                   <YAxis 
                     fontSize={10}
-                    tickFormatter={(value) => `$${(value / 1000).toFixed(0)}K`}
+                    tickFormatter={(value) => `${getCurrencySymbol(getCompanyCurrency())}${(value / 1000).toFixed(0)}K`}
                   />
                   <Tooltip 
                     formatter={(value, name) => [formatCurrency(value), name]}

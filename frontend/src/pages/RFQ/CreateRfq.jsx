@@ -34,6 +34,8 @@ import InternalItemService from '../../services/InternalItemService';
 import SupplierService from '../../services/SupplierService';
 import RqfService from '../../services/RfqService';
 import { computeDefaultsMap } from '../../utils/autoDefaults';
+import { useFeatureFlags } from '../../hooks/useFeatureFlags';
+import Swal from 'sweetalert2';
 
 const CreateRFQ = () => {
   const { rfqId } = useParams();
@@ -42,6 +44,7 @@ const CreateRFQ = () => {
   const formikRef = useRef();
   const navigate = useNavigate();
   const companyId = getEntityId();
+  const { isBlocked, getUsage, getFeature } = useFeatureFlags();
   const initialValues = {
     title: '',
     objective: '',
@@ -403,9 +406,9 @@ const CreateRFQ = () => {
       const response = await InternalItemService.getAllActiveItems(companyId);
       setProducts(response || []);
     } catch (error) {
-      console.error('Error fetching internal items:', error);
-      toast.dismiss();
-      toast.error(error?.response?.data?.errorMessage || 'Failed to fetch internal items');
+      // After apiClient.formatError: error.data contains response data, error.message contains the message
+      console.error('Error fetching internal items:', error?.data?.errorMessage || error?.message);
+      // Note: apiClient already shows toast for 400/500 errors
     }
   };
 
@@ -413,6 +416,27 @@ const CreateRFQ = () => {
     if (isDisabled) {
       toast.dismiss();
       toast.error('RFQ cannot be modified in its current status');
+      return;
+    }
+
+    // Check RFQ usage limit for new RFQs only
+    if (!isEditMode && isBlocked('RFQ_COUNT')) {
+      const feature = getFeature('RFQ_COUNT');
+      const usage = getUsage('RFQ_COUNT');
+      Swal.fire({
+        title: 'RFQ Limit Reached',
+        html: `
+          <div class="text-center">
+            <i class="bi bi-exclamation-octagon text-danger" style="font-size: 48px;"></i>
+            <p class="mt-3">${feature?.blockReason || 'You have reached your RFQ limit for this billing period.'}</p>
+            <p class="text-muted">Used: ${usage.currentUsage} / ${usage.limit}</p>
+            <p class="mt-2">Please upgrade your plan to create more RFQs.</p>
+          </div>
+        `,
+        icon: null,
+        confirmButtonText: 'OK',
+        confirmButtonColor: '#dc3545',
+      });
       return;
     }
 
@@ -489,8 +513,21 @@ const CreateRFQ = () => {
       }
     } catch (error) {
       console.error('Error creating RFQ:', error);
-      toast.dismiss();
-      toast.error(error?.response?.data?.errorMessage || 'Failed to create RFQ.');
+      // After apiClient.formatError: error.data contains response data, error.message contains the message
+      const errorMessage = error?.data?.errorMessage || error?.message || 'Failed to create RFQ.';
+
+      // Check if it's a usage limit error
+      if (errorMessage.toLowerCase().includes('limit') || errorMessage.toLowerCase().includes('usage')) {
+        toast.dismiss(); // Dismiss any existing toasts (apiClient may have shown one)
+        Swal.fire({
+          title: 'RFQ Limit Reached',
+          text: errorMessage,
+          icon: 'warning',
+          confirmButtonText: 'OK',
+          confirmButtonColor: '#dc3545',
+        });
+      }
+      // Note: Don't show toast for other errors - apiClient.handleBadRequest already shows one
     }
   };
 

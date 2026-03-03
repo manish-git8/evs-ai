@@ -24,7 +24,7 @@ import * as Yup from 'yup';
 import '../CompanyManagement/ReactBootstrapTable.scss';
 import ComponentCard from '../../components/ComponentCard';
 import GrnService from '../../services/GrnService';
-import { formatDate, getEntityId } from '../localStorageUtil';
+import { formatDate, getEntityId, formatCurrency } from '../localStorageUtil';
 import ReceiptService from '../../services/RecieptService';
 import FileUploadService from '../../services/FileUploadService';
 import UserService from '../../services/UserService';
@@ -962,7 +962,7 @@ const GrnReceipt = () => {
                       <td>{grnDetail.unitOfMeasurement || 'N/A'}</td>
                       <td>{grnDetail.qtyReceived === 0 ? '0' : grnDetail.qtyReceived || 'N/A'}</td>
                       <td>{grnDetail.qtyAccepted === 0 ? '0' : grnDetail.qtyAccepted || 'N/A'}</td>
-                      <td>{grnDetail.unitPrice ? `$${grnDetail.unitPrice.toFixed(2)}` : 'N/A'}</td>
+                      <td>{grnDetail.unitPrice ? formatCurrency(grnDetail.unitPrice) : 'N/A'}</td>
                     </tr>
                   ))}
                 </tbody>

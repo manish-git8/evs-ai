@@ -35,7 +35,7 @@ import CatalogItemService from '../../services/CatalogItemService';
 import SupplierService from '../../services/SupplierService';
 import CartService from '../../services/CartService';
 import FeedBackService from '../../services/FeedBackService';
-import { getEntityId, getUserId } from '../localStorageUtil';
+import { getEntityId, getUserId, formatCurrency, getCompanyCurrency } from '../localStorageUtil';
 
 const SearchCatalog = () => {
   const navigate = useNavigate();
@@ -108,14 +108,7 @@ const SearchCatalog = () => {
     fetchProducts();
   }, [debouncedSearchTerm]);
 
-  const formatCurrency = (amount, currency = 'USD') => {
-    if (!amount && amount !== 0) return 'N/A';
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency,
-      minimumFractionDigits: 2,
-    }).format(amount);
-  };
+  // formatCurrency is imported from localStorageUtil and uses company currency
 
   const handleAddToCartClick = (product, e) => {
     if (e) e.stopPropagation();
@@ -160,7 +153,7 @@ const SearchCatalog = () => {
         qty: 1,
         price: selectedProduct.UnitPrice || 0,
         unitOfMeasure: selectedProduct.UnitOfMeasurement || 'piece',
-        currencyCode: selectedProduct.Currency || 'USD',
+        currencyCode: selectedProduct.Currency || getCompanyCurrency(),
         internalBuyerQuoteFile: 0,
         priceUpdate: false,
         classId: null,

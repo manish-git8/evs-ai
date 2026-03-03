@@ -44,6 +44,33 @@ const Login = () => {
     }
   }, [resendCooldown]);
 
+  // Check for subscription error on page load
+  useEffect(() => {
+    const subscriptionError = sessionStorage.getItem('subscriptionError');
+    if (subscriptionError) {
+      try {
+        const errorData = JSON.parse(subscriptionError);
+        // Show a more prominent error message for subscription issues
+        toast.error(
+          <div>
+            <strong>Subscription Issue</strong>
+            <p style={{ marginBottom: 0, marginTop: '0.5rem' }}>{errorData.message}</p>
+          </div>,
+          {
+            toastId: 'subscription-error-login',
+            autoClose: false,
+            closeOnClick: false,
+          }
+        );
+        // Clear the error after showing
+        sessionStorage.removeItem('subscriptionError');
+      } catch (e) {
+        console.error('Error parsing subscription error:', e);
+        sessionStorage.removeItem('subscriptionError');
+      }
+    }
+  }, []);
+
   const handleResendVerification = async () => {
     if (!resendEmail || resendCooldown > 0) return;
 
@@ -54,7 +81,10 @@ const Login = () => {
       setResendCooldown(60);
       setShowResendModal(false);
     } catch (error) {
-      const errorMsg = error.response?.data?.errorMessage || error.response?.data?.message || 'Failed to send verification email.';
+      // After apiClient.formatError: error.data contains response data, error.message contains the message
+      const errorMsg = error?.data?.errorMessage || error?.message || 'Failed to send verification email.';
+      // Note: apiClient may have already shown a toast, but we show for clarity here
+      toast.dismiss();
       toast.error(errorMsg);
     } finally {
       setIsResending(false);
@@ -93,7 +123,8 @@ const Login = () => {
       }
     } catch (error) {
       toast.dismiss();
-      const errorMessage = error.response?.data?.errorMessage || error.response?.data?.message || 'An unexpected error occurred';
+      // After apiClient.formatError: error.data contains response data, error.message contains the message
+      const errorMessage = error?.data?.errorMessage || error?.message || 'An unexpected error occurred';
 
       // Handle specific error cases
       if (errorMessage.toLowerCase().includes('locked')) {

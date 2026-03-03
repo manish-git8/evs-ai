@@ -5,7 +5,7 @@ import UserDashboardService from '../../../services/UserDashboardService';
 import CartService from '../../../services/CartService';
 import RfqService from '../../../services/RfqService';
 import PurchaseOrderService from '../../../services/PurchaseOrderService';
-import { getEntityId, getUserId, formatDate } from '../../../pages/localStorageUtil';
+import { getEntityId, getUserId, formatDate, formatCurrency } from '../../../pages/localStorageUtil';
 
 // Debounce hook
 const useDebounce = (value, delay) => {
@@ -232,9 +232,9 @@ const ProgressCards = () => {
 
   const getNestedValue = (obj, path) => path.split('.').reduce((acc, part) => acc && acc[part], obj);
 
-  const formatCurrency = (val) => {
+  const formatCurrencyValue = (val) => {
     if (!val && val !== 0) return '--';
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val);
+    return formatCurrency(val);
   };
 
   const formatUserName = (user) => {
@@ -280,7 +280,7 @@ const ProgressCards = () => {
           { key: 'cartNo', label: 'Cart #', width: '12%' },
           { key: 'approvalDecision', label: 'Status', width: '12%', format: formatStatusBadge },
           { key: 'supplierNames', label: 'Suppliers', width: '18%', format: formatSupplierNames },
-          { key: 'cartAmount', label: 'Amount', width: '12%', format: formatCurrency },
+          { key: 'cartAmount', label: 'Amount', width: '12%', format: formatCurrencyValue },
           { key: 'neededBy', label: 'Needed By', width: '12%', format: (val) => formatDate(val) },
           { key: 'createdDate', label: 'Created', width: '12%', format: (val) => formatDate(val) },
           { key: 'createdBy', label: 'Created By', width: '22%', format: formatUserName },
@@ -299,7 +299,7 @@ const ProgressCards = () => {
           { key: 'orderNo', label: 'PO #', width: '15%' },
           { key: 'supplier.name', label: 'Supplier', width: '20%', nested: true },
           { key: 'approvalDecision', label: 'Status', width: '15%', format: formatStatusBadge },
-          { key: 'orderTotal', label: 'Amount', width: '15%', format: formatCurrency },
+          { key: 'orderTotal', label: 'Amount', width: '15%', format: formatCurrencyValue },
           { key: 'buyerUser', label: 'Buyer', width: '20%', format: formatUserName },
           { key: 'orderPlacedDate', label: 'Date', width: '15%', format: (val) => formatDate(val) },
         ];
@@ -309,7 +309,7 @@ const ProgressCards = () => {
           { key: 'orderNo', label: 'PO #', width: '15%' },
           { key: 'supplier.name', label: 'Supplier', width: '20%', nested: true },
           { key: 'orderStatus', label: 'Status', width: '15%', format: formatStatusBadge },
-          { key: 'orderTotal', label: 'Amount', width: '15%', format: formatCurrency },
+          { key: 'orderTotal', label: 'Amount', width: '15%', format: formatCurrencyValue },
           { key: 'buyerUser', label: 'Buyer', width: '20%', format: formatUserName },
           { key: 'orderPlacedDate', label: 'Date', width: '15%', format: (val) => formatDate(val) },
         ];

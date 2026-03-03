@@ -39,8 +39,10 @@ const EmailVerification = () => {
       toast.success('Email verified successfully!');
     } catch (error) {
       setVerificationStatus('error');
-      const errorMsg = error.response?.data?.errorMessage || error.response?.data?.message || 'Verification failed. The link may be invalid or expired.';
+      // After apiClient.formatError: error.data contains response data, error.message contains the message
+      const errorMsg = error?.data?.errorMessage || error?.message || 'Verification failed. The link may be invalid or expired.';
       setErrorMessage(errorMsg);
+      toast.dismiss();
       toast.error(errorMsg);
     }
   };
@@ -54,7 +56,9 @@ const EmailVerification = () => {
       toast.success('Verification email sent successfully! Please check your inbox.');
       setResendCooldown(60); // 60 second cooldown
     } catch (error) {
-      const errorMsg = error.response?.data?.errorMessage || error.response?.data?.message || 'Failed to send verification email.';
+      // After apiClient.formatError: error.data contains response data, error.message contains the message
+      const errorMsg = error?.data?.errorMessage || error?.message || 'Failed to send verification email.';
+      toast.dismiss();
       toast.error(errorMsg);
     } finally {
       setIsResending(false);

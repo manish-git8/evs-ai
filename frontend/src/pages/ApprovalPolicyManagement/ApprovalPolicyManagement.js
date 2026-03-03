@@ -11,7 +11,7 @@ import DepartmentService from '../../services/DepartmentService';
 import LocationService from '../../services/LocationService';
 import UserService from '../../services/UserService';
 import ProjectService from '../../services/ProjectService';
-import { getEntityId } from '../localStorageUtil';
+import { getEntityId, formatCurrency } from '../localStorageUtil';
 import { POLICY_CONDITION_TYPES } from '../../constant/ApprovalPolicyConstant';
 import {
   FaArrowUp,
@@ -603,12 +603,6 @@ const ApprovalPolicyManagement = () => {
     }
   };
 
-  const formatCurrency = (value) => {
-    return new Intl.NumberFormat('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(value);
-  };
 
   const getSupplierName = (supplierId) => {
     const supplier = suppliers.find((s) => s.supplierId === supplierId);

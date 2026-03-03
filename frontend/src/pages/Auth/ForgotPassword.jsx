@@ -28,9 +28,11 @@ const ForgotPassword = () => {
       setEmailSent(true);
       toast.success('Password reset link has been sent to your email.');
     } catch (error) {
-      const errorMsg = error.response?.data?.errorMessage ||
-                       error.response?.data?.message ||
+      // After apiClient.formatError: error.data contains response data, error.message contains the message
+      const errorMsg = error?.data?.errorMessage ||
+                       error?.message ||
                        'Failed to send reset email. Please check your email and try again.';
+      toast.dismiss();
       toast.error(errorMsg);
     } finally {
       setSubmitting(false);

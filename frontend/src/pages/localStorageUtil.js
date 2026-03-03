@@ -96,6 +96,23 @@ export const setCompanyName = (name) => {
   }
 };
 
+export const getCompanyCurrency = () => {
+  try {
+    return localStorage.getItem('companyCurrency') || 'INR';
+  } catch (error) {
+    console.error('Error getting companyCurrency from localStorage:', error);
+    return 'INR';
+  }
+};
+
+export const setCompanyCurrency = (currency) => {
+  try {
+    localStorage.setItem('companyCurrency', currency || 'INR');
+  } catch (error) {
+    console.error('Error setting companyCurrency in localStorage:', error);
+  }
+};
+
 export const pageSize = 10;
 
 export const formatDate = (
@@ -113,21 +130,68 @@ export const formatDate = (
   }
 };
 
-export const formatCurrency = (amount, currencyCode) => {
-  const currencySymbols = {
-    USD: '$',
-    INR: '₹',
-    EUR: '€',
-    GBP: '£',
-    JPY: '¥',
-  };
+// Currency symbols map
+const CURRENCY_SYMBOLS = {
+  INR: '\u20B9', // ₹
+  USD: '$',
+  EUR: '\u20AC', // €
+  GBP: '\u00A3', // £
+  JPY: '\u00A5', // ¥
+  CNY: '\u00A5', // ¥
+  AUD: 'A$',
+  CAD: 'C$',
+  CHF: 'CHF',
+  SGD: 'S$',
+  AED: 'AED',
+  SAR: 'SAR',
+};
 
-  if (!currencyCode) {
-    return `${amount}`;
+// Currency to locale map
+const CURRENCY_LOCALES = {
+  INR: 'en-IN',
+  USD: 'en-US',
+  EUR: 'de-DE',
+  GBP: 'en-GB',
+  JPY: 'ja-JP',
+  CNY: 'zh-CN',
+};
+
+/**
+ * Get currency symbol for a currency code
+ * @param {string} currencyCode - Currency code (e.g., 'INR', 'USD')
+ * @returns {string} Currency symbol
+ */
+export const getCurrencySymbol = (currencyCode) => {
+  if (!currencyCode) return CURRENCY_SYMBOLS.INR;
+  const code = currencyCode.toUpperCase().trim();
+  return CURRENCY_SYMBOLS[code] || code;
+};
+
+/**
+ * Format amount with currency symbol and proper formatting
+ * @param {number|string} amount - Amount to format
+ * @param {string} currencyCode - Currency code (defaults to company currency or INR)
+ * @returns {string} Formatted currency string
+ */
+export const formatCurrency = (amount, currencyCode) => {
+  // Use company currency if no currency code provided
+  const code = currencyCode || getCompanyCurrency() || 'INR';
+  const symbol = getCurrencySymbol(code);
+  const locale = CURRENCY_LOCALES[code.toUpperCase()] || 'en-IN';
+
+  if (amount === null || amount === undefined || isNaN(Number(amount))) {
+    return `${symbol}0.00`;
   }
 
-  const symbol = currencySymbols[currencyCode] || currencyCode;
-  return `${symbol}${amount}`;
+  try {
+    const formatter = new Intl.NumberFormat(locale, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+    return `${symbol}${formatter.format(Number(amount))}`;
+  } catch (error) {
+    return `${symbol}${Number(amount).toFixed(2)}`;
+  }
 };
 
 /**

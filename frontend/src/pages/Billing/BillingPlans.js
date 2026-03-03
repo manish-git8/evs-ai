@@ -9,18 +9,24 @@ import {
   ButtonGroup,
   Spinner,
   Badge,
+  Alert,
 } from 'reactstrap';
 import { toast, ToastContainer } from 'react-toastify';
 import Swal from 'sweetalert2';
 import 'react-toastify/dist/ReactToastify.css';
 import { useNavigate } from 'react-router-dom';
 import BillingService from '../../services/BillingService';
-import { getEntityId } from '../localStorageUtil';
+import { getEntityId, getUserRole, getEntityType, getCurrencySymbol, getCompanyCurrency } from '../localStorageUtil';
 import './Billing.scss';
 
 const BillingPlans = () => {
   const navigate = useNavigate();
   const companyId = getEntityId();
+  const userRoles = getUserRole();
+  const entityType = getEntityType();
+
+  // Check if user is admin - only admins can manage plans in enterprise
+  const isAdmin = entityType === 'ADMIN' || userRoles.includes('ADMIN');
   
 
   const [plans, setPlans] = useState([]);
@@ -96,6 +102,9 @@ const BillingPlans = () => {
 
     const billingCycleLabel = getBillingCycleLabel(billingCycle);
 
+    const trialDays = selectedPlan.trialDays || 14;
+
+    const currencySymbol = getCurrencySymbol(selectedPlan.currency || getCompanyCurrency());
     const result = await Swal.fire({
       title: 'Confirm Subscription',
       html: `
@@ -104,9 +113,9 @@ const BillingPlans = () => {
           <div class="alert alert-info">
             <p class="mb-1"><strong>Plan:</strong> ${selectedPlan.name}</p>
             <p class="mb-1"><strong>Billing Cycle:</strong> ${billingCycleLabel}</p>
-            <p class="mb-0"><strong>Price:</strong> $${selectedPlan.basePrice?.toFixed(2)}/${billingCycleLabel.toLowerCase()}</p>
+            <p class="mb-0"><strong>Price:</strong> ${currencySymbol}${selectedPlan.basePrice?.toFixed(2)}/${billingCycleLabel.toLowerCase()}</p>
           </div>
-          <p class="text-success fw-bold">✓ You will get a 60-day FREE trial period!</p>
+          <p class="text-success fw-bold">✓ You will get a ${trialDays}-day FREE trial period!</p>
           <p class="text-muted small">Trial expiry reminders will be sent at 7, 3, and 1 day before expiry.</p>
         </div>
       `,
@@ -147,7 +156,7 @@ const BillingPlans = () => {
       // Show success message
       Swal.fire({
         title: 'Success!',
-        html: `Subscription created successfully with ${billingCycleLabel.toLowerCase()} billing and 60-day trial!<br/>Redirecting to billing dashboard...`,
+        html: `Subscription created successfully with ${billingCycleLabel.toLowerCase()} billing and ${trialDays}-day trial!<br/>Redirecting to billing dashboard...`,
         icon: 'success',
         confirmButtonText: 'OK',
         confirmButtonColor: '#28a745',
@@ -176,6 +185,73 @@ const BillingPlans = () => {
       <div className="text-center mt-5">
         <Spinner color="primary" />
         <p className="mt-2" style={{ color: '#495057' }}>Loading plans...</p>
+      </div>
+    );
+  }
+
+  // Non-admin users see a read-only view with contact admin message
+  if (!isAdmin) {
+    return (
+      <div className="billing-plans-container">
+        <ToastContainer position="top-right" autoClose={3000} />
+        <Row>
+          <Col xs="12">
+            <div className="d-flex justify-content-between align-items-center mb-3">
+              <div>
+                <h2 style={{ color: '#495057' }}>Subscription Plans</h2>
+                <p className="text-muted" style={{ color: '#6c757d' }}>Enterprise subscription plans</p>
+              </div>
+              <Button color="secondary" outline size="sm" onClick={() => navigate('/billing-dashboard')}>
+                <i className="bi bi-arrow-left me-2" />
+                Back
+              </Button>
+            </div>
+          </Col>
+        </Row>
+
+        <Row className="mb-4">
+          <Col xs="12">
+            <Alert color="primary">
+              <h5 className="alert-heading">
+                <i className="bi bi-building me-2" />
+                Enterprise Subscription
+              </h5>
+              <p className="mb-0">
+                Your organization uses an enterprise subscription plan. Plan changes, upgrades, and subscription
+                modifications are managed by your EVS administrator.
+              </p>
+              <hr />
+              <p className="mb-0">
+                <strong>Need to change your plan?</strong> Please contact your system administrator or
+                reach out to EVS support at <a href="mailto:support@evsprocure.com">support@evsprocure.com</a>
+              </p>
+            </Alert>
+          </Col>
+        </Row>
+
+        {currentSubscription && (
+          <Row>
+            <Col xs="12" md="6">
+              <Card>
+                <CardBody>
+                  <CardTitle tag="h5">
+                    <i className="bi bi-check-circle-fill text-success me-2" />
+                    Your Current Plan
+                  </CardTitle>
+                  <h3 className="text-primary">{currentSubscription.planName}</h3>
+                  <p className="text-muted">
+                    Status: <Badge color={currentSubscription.status === 'ACTIVE' ? 'success' : 'warning'}>
+                      {currentSubscription.status}
+                    </Badge>
+                  </p>
+                  <Button color="primary" outline onClick={() => navigate('/billing-dashboard')}>
+                    View Billing Details
+                  </Button>
+                </CardBody>
+              </Card>
+            </Col>
+          </Row>
+        )}
       </div>
     );
   }
@@ -284,18 +360,18 @@ const BillingPlans = () => {
 
                   <div className="price-container text-center">
                     <h3 className="price mb-0">
-                      ${plan.basePrice ? plan.basePrice.toFixed(2) : '0.00'}
+                      {getCurrencySymbol(plan.currency || getCompanyCurrency())}{plan.basePrice ? plan.basePrice.toFixed(2) : '0.00'}
                       <span className="price-period">/{plan.billingCycle ? getBillingCycleLabel(plan.billingCycle).toLowerCase() : 'month'}</span>
                     </h3>
                     {plan.pricePerUser && plan.pricePerUser > 0 && (
                       <p className="text-muted small mb-0 mt-1">
-                        + ${plan.pricePerUser.toFixed(2)}/user
+                        + {getCurrencySymbol(plan.currency || getCompanyCurrency())}{plan.pricePerUser.toFixed(2)}/user
                       </p>
                     )}
-                    {!currentSubscription && (
+                    {!currentSubscription && plan.trialDays > 0 && (
                       <p className="text-success fw-bold mt-2 mb-0">
                         <i className="bi bi-gift-fill me-1" />
-                        60-Day Free Trial
+                        {plan.trialDays}-Day Free Trial
                       </p>
                     )}
                   </div>

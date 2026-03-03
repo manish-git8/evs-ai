@@ -52,7 +52,7 @@ class ApiClient {
             this.handleUnauthorized();
             break;
           case 403:
-            this.handleForbidden();
+            this.handleForbidden(error);
             break;
           case 400:
             if (!suppressToast) this.handleBadRequest(error);
@@ -85,9 +85,37 @@ class ApiClient {
   }
 
   /**
-   * Handle 403 Forbidden - session expired or access denied
+   * Handle 403 Forbidden - could be session expired OR subscription issue
    */
-  handleForbidden() {
+  handleForbidden(error) {
+    const errorCode = error.response?.data?.error || '';
+    const errorMessage = error.response?.data?.message || '';
+
+    // Check if this is a subscription-related error
+    if (errorCode.startsWith('SUBSCRIPTION_') || errorCode === 'NO_SUBSCRIPTION' || errorCode === 'TRIAL_EXPIRED') {
+      // Store the subscription error for display
+      sessionStorage.setItem('subscriptionError', JSON.stringify({
+        code: errorCode,
+        message: errorMessage
+      }));
+
+      // Clear auth but preserve the error
+      localStorage.removeItem('user');
+      localStorage.removeItem('userDetails');
+      localStorage.removeItem('entityId');
+
+      // Show the actual subscription error message
+      toast.error(errorMessage || 'Your subscription is not active. Please contact your administrator.', {
+        toastId: 'subscription-error',
+        autoClose: false  // Don't auto-close so user can read it
+      });
+
+      // Redirect to login with a flag
+      window.location.href = '/?subscription_error=true';
+      return;
+    }
+
+    // Regular session expiration
     localStorage.clear();
     toast.error('Session expired. Please login again.', { toastId: 'session-expired' });
     window.location.href = '/';

@@ -34,6 +34,7 @@ import {
   pageSize,
   formatStatusText,
 } from '../localStorageUtil';
+import { formatDualCurrency } from '../../utils/currencyUtils';
 
 Chart.register(
   ArcElement,
@@ -64,7 +65,7 @@ const SupplierDashboard = () => {
   const [selectedCatalog, setSelectedCatalog] = useState(null);
   const [selectedCatalogId, setSelectedCatalogId] = useState(null);
   const [catalogNames, setCatalogNames] = useState({});
-  const [sortBy, setSortBy] = useState('PurchaseOrderId');
+  const [sortBy, setSortBy] = useState('purchaseOrderId');
   const [sortOrder, setSortOrder] = useState('desc');
   const [catalogSortBy, setCatalogSortBy] = useState('catalogItemId');
   const [catalogSortOrder, setCatalogSortOrder] = useState('desc');
@@ -95,6 +96,11 @@ const SupplierDashboard = () => {
   // const [rfqDetails, setRfqDetails] = useState(null);
   // const [loadingRfqs, setLoadingRfqs] = useState(false);
   // const [loadingDetails, setLoadingDetails] = useState(false);
+
+  // Format catalog item price with item's own currency
+  const formatCatalogPrice = (cell, row) => {
+    return formatCurrency(cell || 0, row?.Currency || 'USD');
+  };
 
   const handleCatalogSort = (field) => {
     const newOrder = catalogSortBy === field && catalogSortOrder === 'asc' ? 'desc' : 'asc';
@@ -549,6 +555,31 @@ const SupplierDashboard = () => {
     return value.toString();
   };
 
+  // Format dual currency for purchase order row (supplier currency first, company currency in brackets)
+  const formatPOAmount = (row) => {
+    const supplierCurrency = row.originalCurrencyCode || row.supplier?.currency || row.currencyCode || 'USD';
+    const companyCurrency = row.convertedCurrencyCode || row.company?.currency || 'USD';
+    const originalAmount = row.originalOrderAmount !== undefined && row.originalOrderAmount !== null
+      ? row.originalOrderAmount
+      : row.orderTotal || 0;
+    const convertedAmount = row.convertedOrderAmount !== undefined && row.convertedOrderAmount !== null
+      ? row.convertedOrderAmount
+      : row.orderTotal || 0;
+
+    // If same currency or no conversion data, show single currency
+    if (supplierCurrency === companyCurrency || row.convertedOrderAmount === undefined) {
+      return formatCurrency(originalAmount, supplierCurrency);
+    }
+
+    // Show dual currency
+    return formatDualCurrency({
+      originalPrice: originalAmount,
+      originalCurrency: supplierCurrency,
+      convertedPrice: convertedAmount,
+      convertedCurrency: companyCurrency,
+    }, 'supplier');
+  };
+
   useEffect(() => {
     if (orderId) {
       fetchOrderDetails(orderId);
@@ -778,10 +809,10 @@ const SupplierDashboard = () => {
                   </TableHeaderColumn>
                   <TableHeaderColumn
                     dataField="orderTotal"
-                    dataFormat={(cell, row) => formatCurrency(row.orderTotal, row.currencyCode)}
+                    dataFormat={(cell, row) => formatPOAmount(row)}
                     dataAlign="left"
                     headerAlign="left"
-                    width="12%"
+                    width="15%"
                   >
                     <div
                       style={{ display: 'flex', alignItems: 'center' }}
@@ -1003,11 +1034,12 @@ const SupplierDashboard = () => {
                   <TableHeaderColumn
                     width="11%"
                     dataField="UnitPrice"
-                    dataAlign="left"
-                    headerAlign="left"
+                    dataAlign="right"
+                    headerAlign="right"
+                    dataFormat={formatCatalogPrice}
                   >
                     <div
-                      style={{ display: 'flex', alignItems: 'center' }}
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}
                       onClick={() => handleCatalogSort('unitPrice')}
                     >
                       Unit Price {renderCatalogSortIcon('unitPrice')}

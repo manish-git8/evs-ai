@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import PropTypes from 'prop-types';
 import SpendingLimitService from '../../../services/SpendingLimitService';
+import { getCompanyCurrency } from '../../../pages/localStorageUtil';
 
 const SpendingLimit = ({ companyId, userId }) => {
   const [spendingData, setSpendingData] = useState({
@@ -82,7 +83,7 @@ const SpendingLimit = ({ companyId, userId }) => {
         <span className="spending-progress-stats">
           {spendingData.spendingLimit.toLocaleString('en-US', {
             style: 'currency',
-            currency: 'USD',
+            currency: getCompanyCurrency(),
             maximumFractionDigits: 0,
           })}
         </span>
@@ -116,7 +117,7 @@ const SpendingLimit = ({ companyId, userId }) => {
           Spent:{' '}
           {spendingData.amountSpent.toLocaleString('en-US', {
             style: 'currency',
-            currency: 'USD',
+            currency: getCompanyCurrency(),
             maximumFractionDigits: 0,
           })}
         </span>
@@ -124,7 +125,7 @@ const SpendingLimit = ({ companyId, userId }) => {
           Remaining:{' '}
           {(spendingData.spendingLimit - spendingData.amountSpent).toLocaleString('en-US', {
             style: 'currency',
-            currency: 'USD',
+            currency: getCompanyCurrency(),
             maximumFractionDigits: 0,
           })}
         </span>

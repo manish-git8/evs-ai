@@ -19,6 +19,7 @@ const CompanyRegistration = () => {
     phone: '',
     categoryId: '',
     subCategoryId: '',
+    currency: 'INR',
     primaryContact: {},
     secondaryContact: {},
     billingAddress: {},

@@ -5,7 +5,8 @@ import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import Swal from 'sweetalert2';
 import PurchaseOrderService from '../../services/PurchaseOrderService';
-import { getEntityId } from '../localStorageUtil';
+import { getEntityId, formatCurrency } from '../localStorageUtil';
+import { getExchangeRate, formatDualCurrency } from '../../utils/currencyUtils';
 
 const SupplierPurchaseOrderDetails = () => {
   const { purchaseOrderId } = useParams();
@@ -15,6 +16,7 @@ const SupplierPurchaseOrderDetails = () => {
   const [purchaseOrder, setPurchaseOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [confirmQuantities, setConfirmQuantities] = useState({});
+  const [exchangeRate, setExchangeRate] = useState(1);
 
   const queryParams = new URLSearchParams(location.search);
   const redirectToDashboard = queryParams.get('dashboard') === 'true';
@@ -62,19 +64,124 @@ const SupplierPurchaseOrderDetails = () => {
     }
   }, [purchaseOrderId, supplierId]);
 
-  const formatCurrency = (amount, currency = 'USD') => {
-    if (amount == null || Number.isNaN(Number(amount))) {
-      return currency === 'USD' ? '$0.00' : `${currency} 0.00`;
+  // Get company currency from purchase order
+  const getCompanyCurrency = () => purchaseOrder?.company?.currency || purchaseOrder?.convertedCurrencyCode || 'USD';
+  const getSupplierCurrency = () => purchaseOrder?.supplier?.currency || purchaseOrder?.originalCurrencyCode || purchaseOrder?.currency || 'USD';
+
+  // Fetch exchange rate when PO loads
+  useEffect(() => {
+    const fetchRate = async () => {
+      const companyCurrency = getCompanyCurrency();
+      const supplierCurrency = getSupplierCurrency();
+      if (supplierCurrency && companyCurrency && supplierCurrency !== companyCurrency) {
+        try {
+          const rate = await getExchangeRate(supplierCurrency, companyCurrency);
+          setExchangeRate(rate);
+        } catch (error) {
+          console.error('Error fetching exchange rate:', error);
+          setExchangeRate(1);
+        }
+      } else {
+        setExchangeRate(1);
+      }
+    };
+    if (purchaseOrder) {
+      fetchRate();
+    }
+  }, [purchaseOrder]);
+
+  // Format amount with dual currency display (supplier currency primary, company currency secondary)
+  const formatDualAmount = (amount, item = null) => {
+    const supplierCurrency = getSupplierCurrency();
+    const companyCurrency = getCompanyCurrency();
+
+    // Get the original supplier amount
+    const originalAmount = item?.originalUnitPrice !== undefined && item?.originalUnitPrice !== null
+      ? item.originalUnitPrice
+      : amount;
+
+    // Get the converted company amount
+    let convertedAmount;
+    if (item?.convertedUnitPrice !== undefined && item?.convertedUnitPrice !== null) {
+      convertedAmount = item.convertedUnitPrice;
+    } else {
+      convertedAmount = amount * exchangeRate;
     }
 
-    const formatter = new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency,
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
+    // If same currency, just show single value
+    if (supplierCurrency === companyCurrency) {
+      return formatCurrency(originalAmount, supplierCurrency);
+    }
 
-    return formatter.format(Number(amount));
+    // Show dual currency: supplier currency first (for supplier login), company currency in brackets
+    return formatDualCurrency({
+      originalPrice: originalAmount,
+      originalCurrency: supplierCurrency,
+      convertedPrice: convertedAmount,
+      convertedCurrency: companyCurrency,
+    }, 'supplier');
+  };
+
+  // Format total amount with dual currency display
+  const formatDualTotal = (quantity, unitPrice, item = null) => {
+    const supplierCurrency = getSupplierCurrency();
+    const companyCurrency = getCompanyCurrency();
+
+    // Calculate original total in supplier currency
+    const originalTotal = quantity * unitPrice;
+
+    // Calculate converted total in company currency
+    let convertedTotal;
+    if (item?.convertedUnitPrice !== undefined && item?.convertedUnitPrice !== null) {
+      convertedTotal = quantity * item.convertedUnitPrice;
+    } else {
+      convertedTotal = originalTotal * exchangeRate;
+    }
+
+    // If same currency, just show single value
+    if (supplierCurrency === companyCurrency) {
+      return formatCurrency(originalTotal, supplierCurrency);
+    }
+
+    // Show dual currency
+    return formatDualCurrency({
+      originalPrice: originalTotal,
+      originalCurrency: supplierCurrency,
+      convertedPrice: convertedTotal,
+      convertedCurrency: companyCurrency,
+    }, 'supplier');
+  };
+
+  // Format order amount with dual currency display
+  const formatOrderAmount = () => {
+    const supplierCurrency = getSupplierCurrency();
+    const companyCurrency = getCompanyCurrency();
+
+    // Get original order amount in supplier currency
+    const originalAmount = purchaseOrder?.originalOrderAmount !== undefined && purchaseOrder?.originalOrderAmount !== null
+      ? purchaseOrder.originalOrderAmount
+      : purchaseOrder?.orderAmount || purchaseOrder?.orderTotal || 0;
+
+    // Get converted order amount in company currency
+    let convertedAmount;
+    if (purchaseOrder?.convertedOrderAmount !== undefined && purchaseOrder?.convertedOrderAmount !== null) {
+      convertedAmount = purchaseOrder.convertedOrderAmount;
+    } else {
+      convertedAmount = originalAmount * exchangeRate;
+    }
+
+    // If same currency, just show single value
+    if (supplierCurrency === companyCurrency) {
+      return formatCurrency(originalAmount, supplierCurrency);
+    }
+
+    // Show dual currency
+    return formatDualCurrency({
+      originalPrice: originalAmount,
+      originalCurrency: supplierCurrency,
+      convertedPrice: convertedAmount,
+      convertedCurrency: companyCurrency,
+    }, 'supplier');
   };
 
   const getStatusColor = (status) => {
@@ -458,7 +565,7 @@ const SupplierPurchaseOrderDetails = () => {
                       Order Amount
                     </div>
                     <div style={{ fontSize: '16px', fontWeight: '700', color: '#28a745' }}>
-                      {formatCurrency(purchaseOrder.orderAmount || purchaseOrder.orderTotal)}
+                      {formatOrderAmount()}
                     </div>
                   </div>
                 </div>
@@ -656,14 +763,32 @@ const SupplierPurchaseOrderDetails = () => {
                       Value:
                     </span>
                     <span className="fw-bold" style={{ color: '#198754', fontSize: '14px' }}>
-                      {formatCurrency(
-                        purchaseOrder.orderItemDetails?.reduce(
-                          (sum, item) =>
-                            sum +
-                            (item.quantity && item.unitPrice ? item.quantity * item.unitPrice : 0),
+                      {(() => {
+                        const supplierCurrency = getSupplierCurrency();
+                        const companyCurrency = getCompanyCurrency();
+                        const originalTotal = purchaseOrder.orderItemDetails?.reduce(
+                          (sum, item) => sum + (item.quantity ? item.quantity * (item.unitPrice || 0) : 0),
                           0,
-                        ) || 0,
-                      )}
+                        ) || 0;
+                        const convertedTotal = purchaseOrder.orderItemDetails?.reduce(
+                          (sum, item) => {
+                            const price = item.convertedUnitPrice !== undefined && item.convertedUnitPrice !== null
+                              ? item.convertedUnitPrice
+                              : (item.unitPrice || 0) * exchangeRate;
+                            return sum + (item.quantity ? item.quantity * price : 0);
+                          },
+                          0,
+                        ) || 0;
+                        if (supplierCurrency === companyCurrency) {
+                          return formatCurrency(originalTotal, supplierCurrency);
+                        }
+                        return formatDualCurrency({
+                          originalPrice: originalTotal,
+                          originalCurrency: supplierCurrency,
+                          convertedPrice: convertedTotal,
+                          convertedCurrency: companyCurrency,
+                        }, 'supplier');
+                      })()}
                     </span>
                   </div>
                 </div>
@@ -746,7 +871,7 @@ const SupplierPurchaseOrderDetails = () => {
                                 <span
                                   style={{ fontSize: '13px', fontWeight: '500', color: '#000' }}
                                 >
-                                  {formatCurrency(item.unitPrice)}
+                                  {formatDualAmount(item.unitPrice, item)}
                                 </span>
                               </div>
                               <div className="d-flex align-items-center">
@@ -759,7 +884,7 @@ const SupplierPurchaseOrderDetails = () => {
                                 <span
                                   style={{ fontSize: '14px', fontWeight: '600', color: '#000' }}
                                 >
-                                  {formatCurrency((item.quantity || 0) * (item.unitPrice || 0))}
+                                  {formatDualTotal(item.quantity || 0, item.unitPrice || 0, item)}
                                 </span>
                               </div>
                             </div>

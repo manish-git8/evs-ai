@@ -16,7 +16,10 @@ import 'react-toastify/dist/ReactToastify.css';
 import { useNavigate, useParams } from 'react-router-dom';
 import InvoiceService from '../../services/InvoiceService';
 import FileUploadService from '../../services/FileUploadService';
-import { formatDate, getEntityId } from '../localStorageUtil';
+import SupplierService from '../../services/SupplierService';
+import CompanyService from '../../services/CompanyService';
+import { formatDate, getEntityId, formatCurrency } from '../localStorageUtil';
+import { getExchangeRate, formatDualCurrency } from '../../utils/currencyUtils';
 import '../CompanyManagement/ReactBootstrapTable.scss';
 
 const SupplierInvoiceDetails = () => {
@@ -29,6 +32,9 @@ const SupplierInvoiceDetails = () => {
   const [previewFile, setPreviewFile] = useState(null);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [exchangeRate, setExchangeRate] = useState(1);
+  const [supplierCurrencyState, setSupplierCurrencyState] = useState('USD');
+  const [companyCurrencyState, setCompanyCurrencyState] = useState('USD');
 
   const fetchInvoiceDetails = async () => {
     try {
@@ -72,6 +78,103 @@ const SupplierInvoiceDetails = () => {
       }
     };
   }, [invoiceId, supplierId]);
+
+  // Fetch supplier and company currencies, then exchange rate
+  useEffect(() => {
+    const fetchCurrenciesAndRate = async () => {
+      if (!invoice) return;
+
+      // Try to get supplier currency from invoice data
+      let supplierCurrency = invoice.supplier?.currency || invoice.currency || invoice.currencyCode;
+
+      // Fetch supplier currency from API if not available in invoice
+      if (!supplierCurrency) {
+        try {
+          const supplierResponse = await SupplierService.getSupplierById(supplierId);
+          supplierCurrency = supplierResponse?.data?.currency || 'USD';
+        } catch (error) {
+          console.error('Error fetching supplier currency:', error);
+          supplierCurrency = 'USD';
+        }
+      }
+      setSupplierCurrencyState(supplierCurrency);
+
+      // Try to get company currency from invoice data
+      let companyCurrency = invoice.company?.currency || invoice.convertedCurrencyCode;
+
+      // Get company ID (companyId is a direct field in InvoiceDto)
+      const companyId = invoice.companyId;
+
+      // Fetch company currency from API if not available in invoice
+      if (!companyCurrency && companyId) {
+        try {
+          const companyResponse = await CompanyService.getCompanyByCompanyId(companyId);
+          // getCompanyByCompanyId returns an array, so access first element
+          const companyData = Array.isArray(companyResponse?.data) ? companyResponse.data[0] : companyResponse?.data;
+          companyCurrency = companyData?.currency || 'USD';
+        } catch (error) {
+          console.error('Error fetching company currency:', error);
+          companyCurrency = 'USD';
+        }
+      } else if (!companyCurrency) {
+        companyCurrency = 'USD';
+      }
+      setCompanyCurrencyState(companyCurrency);
+
+      // Fetch exchange rate if currencies are different
+      if (supplierCurrency !== companyCurrency) {
+        try {
+          const rate = await getExchangeRate(supplierCurrency, companyCurrency);
+          setExchangeRate(rate);
+        } catch (error) {
+          console.error('Error fetching exchange rate:', error);
+          setExchangeRate(1);
+        }
+      } else {
+        setExchangeRate(1);
+      }
+    };
+
+    fetchCurrenciesAndRate();
+  }, [invoice, supplierId]);
+
+  // Get company currency - use state value which is fetched from API if needed
+  const getCompanyCurrency = () => companyCurrencyState;
+
+  // Get supplier currency - use state value which is fetched from API if needed
+  const getSupplierCurrency = () => supplierCurrencyState;
+
+  // Format amount with dual currency display (supplier currency primary, company currency secondary)
+  const formatDualAmount = (amount, item = null) => {
+    const supplierCurrency = getSupplierCurrency();
+    const companyCurrency = getCompanyCurrency();
+
+    // Get the original supplier amount
+    const originalAmount = amount;
+
+    // Get the converted company amount
+    let convertedAmount;
+    if (item?.convertedUnitPrice !== undefined && item?.convertedUnitPrice !== null) {
+      convertedAmount = item.convertedUnitPrice;
+    } else if (item?.convertedSubTotal !== undefined && item?.convertedSubTotal !== null) {
+      convertedAmount = item.convertedSubTotal;
+    } else {
+      convertedAmount = amount * exchangeRate;
+    }
+
+    // If same currency, just show single value
+    if (supplierCurrency === companyCurrency) {
+      return formatCurrency(originalAmount, supplierCurrency);
+    }
+
+    // Show dual currency: supplier currency first (for supplier login), company currency in brackets
+    return formatDualCurrency({
+      originalPrice: originalAmount,
+      originalCurrency: supplierCurrency,
+      convertedPrice: convertedAmount,
+      convertedCurrency: companyCurrency,
+    }, 'supplier');
+  };
 
   const toggleDeleteModal = () => {
     setDeleteModalOpen(!deleteModalOpen);
@@ -504,7 +607,7 @@ const SupplierInvoiceDetails = () => {
                       </td>
                       <td style={{ padding: '6px 0', verticalAlign: 'top', textAlign: 'right' }}>
                         <strong style={{ color: '#212529' }}>
-                          ${parseFloat(invoice.subtotal || 0).toFixed(2)}
+                          {formatDualAmount(parseFloat(invoice.subtotal || 0))}
                         </strong>
                       </td>
                     </tr>
@@ -514,7 +617,7 @@ const SupplierInvoiceDetails = () => {
                       </td>
                       <td style={{ padding: '6px 0', verticalAlign: 'top', textAlign: 'right' }}>
                         <strong style={{ color: '#212529' }}>
-                          ${parseFloat(invoice.taxes || 0).toFixed(2)}
+                          {formatDualAmount(parseFloat(invoice.taxes || 0))}
                         </strong>
                       </td>
                     </tr>
@@ -524,7 +627,7 @@ const SupplierInvoiceDetails = () => {
                       </td>
                       <td style={{ padding: '6px 0', verticalAlign: 'top', textAlign: 'right' }}>
                         <strong style={{ color: '#dc3545' }}>
-                          -${parseFloat(invoice.discount || 0).toFixed(2)}
+                          -{formatDualAmount(parseFloat(invoice.discount || 0))}
                         </strong>
                       </td>
                     </tr>
@@ -536,7 +639,7 @@ const SupplierInvoiceDetails = () => {
                       </td>
                       <td style={{ padding: '10px 0', verticalAlign: 'top', textAlign: 'right' }}>
                         <strong style={{ color: '#2e7d32', fontSize: '1.25rem' }}>
-                          ${parseFloat(invoice.totalAmountDue || 0).toFixed(2)}
+                          {formatDualAmount(parseFloat(invoice.totalAmountDue || 0))}
                         </strong>
                       </td>
                     </tr>
@@ -596,10 +699,10 @@ const SupplierInvoiceDetails = () => {
                           {parseFloat(item.qty || 0).toFixed(2)}
                         </td>
                         <td style={{ padding: '10px', textAlign: 'right' }}>
-                          ${parseFloat(item.unitPrice || 0).toFixed(2)}
+                          {formatDualAmount(parseFloat(item.unitPrice || 0), item)}
                         </td>
                         <td style={{ padding: '10px', textAlign: 'right', fontWeight: '600' }}>
-                          ${parseFloat(item.subTotal || 0).toFixed(2)}
+                          {formatDualAmount(parseFloat(item.subTotal || 0), { convertedSubTotal: item.convertedSubTotal })}
                         </td>
                       </tr>
                     ))}
@@ -708,7 +811,7 @@ const SupplierInvoiceDetails = () => {
               <small className="text-muted">Invoice No:</small> <strong>{invoice.invoiceNo}</strong>
               <br />
               <small className="text-muted">Amount:</small>{' '}
-              <strong>${parseFloat(invoice.totalAmountDue || 0).toFixed(2)}</strong>
+              <strong>{formatDualAmount(parseFloat(invoice.totalAmountDue || 0))}</strong>
             </div>
           </div>
           <p className="mt-3 mb-0 text-muted small">

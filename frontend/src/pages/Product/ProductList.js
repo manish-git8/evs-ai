@@ -29,6 +29,7 @@ import CartService from '../../services/CartService';
 import ClassService from '../../services/ClassService';
 import ProjectService from '../../services/ProjectService';
 import CompanyService from '../../services/CompanyService';
+import { formatCurrency, getCompanyCurrency } from '../localStorageUtil';
 
 const ProductList = () => {
   const navigate = useNavigate();
@@ -210,7 +211,7 @@ const ProductList = () => {
         quantity: selectedQuantity,
         price: selectedProduct.UnitPrice,
         unitOfMeasure: selectedUnitOfMeasure || 'piece',
-        currencyCode: selectedProduct.Currency || 'USD',
+        currencyCode: selectedProduct.Currency || getCompanyCurrency(),
         internalBuyerQuoteFile: 0,
         priceUpdate: false,
         classId: values.classId,
@@ -278,7 +279,7 @@ const ProductList = () => {
       qty: quantity,
       price: product.UnitPrice,
       unitOfMeasure: product.UnitOfMeasurement || 'piece',
-      currencyCode: product.Currency || 'USD',
+      currencyCode: product.Currency || getCompanyCurrency(),
       internalBuyerQuoteFile: 0,
       priceUpdate: false,
       classId: cartAccountSettings.classId || null,
@@ -338,7 +339,7 @@ const ProductList = () => {
       qty: currentQuantity,
       price: product.UnitPrice,
       unitOfMeasure: product.UnitOfMeasurement || 'piece',
-      currencyCode: product.Currency || 'USD',
+      currencyCode: product.Currency || getCompanyCurrency(),
       internalBuyerQuoteFile: 0,
       priceUpdate: false,
       classId: cartAccountSettings.classId || null,
@@ -521,14 +522,7 @@ const ProductList = () => {
     },
   };
 
-  const formatCurrency = (amount, currency = 'USD') => {
-    if (!amount && amount !== 0) return 'N/A';
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency,
-      minimumFractionDigits: 2,
-    }).format(amount);
-  };
+  // formatCurrency is imported from localStorageUtil and uses company currency
 
   const formatStockStatus = (inStock) => {
     return (
@@ -736,7 +730,7 @@ const ProductList = () => {
                       dataField="UnitPrice"
                       dataFormat={(cell) => (
                         <div style={{ fontWeight: '500', color: '#333' }}>
-                          {formatCurrency(cell || 0, 'USD')}
+                          {formatCurrency(cell || 0)}
                         </div>
                       )}
                       dataAlign="right"
@@ -1246,7 +1240,7 @@ const ProductList = () => {
                       <div className="mb-2">
                         <small className="text-muted">Currency</small>
                         <div style={{ fontWeight: '500', color: '#000' }}>
-                          {selectedProductDetails.Currency || 'USD'}
+                          {selectedProductDetails.Currency || getCompanyCurrency()}
                         </div>
                       </div>
                     </div>

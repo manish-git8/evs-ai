@@ -6,15 +6,18 @@ import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { FaSort } from 'react-icons/fa';
 import { useNavigate } from 'react-router-dom';
-import { formatDate, getEntityId } from '../localStorageUtil';
+import { formatDate, getEntityId, getCompanyCurrency } from '../localStorageUtil';
+import { formatCurrency, formatDualCurrency, getExchangeRate, getUserType } from '../../utils/currencyUtils';
 import VoucherService from '../../services/VoucherService';
 import { getBadgeColor, getStatusLabel } from '../../constant/VoucherConstant';
 
 const SupplierVoucher = () => {
   const supplierId = getEntityId();
+  const userType = getUserType();
   const [voucherData, setVoucherData] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
+  const [exchangeRates, setExchangeRates] = useState({});
   const navigate = useNavigate();
 
   // Pagination state
@@ -87,6 +90,53 @@ const SupplierVoucher = () => {
     }, 1500);
     return () => clearTimeout(timer);
   }, [searchTerm]);
+
+  // Fetch exchange rates for company currencies
+  useEffect(() => {
+    const fetchRates = async () => {
+      const currencyPairs = new Map();
+      voucherData.forEach((v) => {
+        const supplierCurrency = v.supplier?.currency;
+        const companyCurrency = v.company?.currency;
+        if (supplierCurrency && companyCurrency && supplierCurrency !== companyCurrency) {
+          currencyPairs.set(`${supplierCurrency}-${companyCurrency}`, { from: supplierCurrency, to: companyCurrency });
+        }
+      });
+
+      const newRates = { ...exchangeRates };
+      for (const [key, { from, to }] of currencyPairs) {
+        if (!newRates[key]) {
+          try {
+            const rate = await getExchangeRate(from, to);
+            newRates[key] = rate;
+          } catch (error) {
+            console.error(`Error fetching rate for ${key}:`, error);
+            newRates[key] = 1;
+          }
+        }
+      }
+      setExchangeRates(newRates);
+    };
+    if (voucherData.length > 0) {
+      fetchRates();
+    }
+  }, [voucherData]);
+
+  // Format amount with dual currency display (supplier sees their currency first)
+  const formatVoucherAmount = (amount, supplierCurrency, companyCurrency) => {
+    if (!supplierCurrency || supplierCurrency === companyCurrency || !amount) {
+      return formatCurrency(amount, supplierCurrency || companyCurrency);
+    }
+    const rateKey = `${supplierCurrency}-${companyCurrency}`;
+    const rate = exchangeRates[rateKey] || 1;
+    const convertedAmount = amount * rate;
+    return formatDualCurrency({
+      originalPrice: amount,
+      originalCurrency: supplierCurrency,
+      convertedPrice: convertedAmount,
+      convertedCurrency: companyCurrency,
+    }, userType);
+  };
 
   const options = {
     hideSizePerPage: true,
@@ -300,8 +350,10 @@ const SupplierVoucher = () => {
                       dataField="finalAmount"
                       dataAlign="right"
                       headerAlign="right"
-                      dataFormat={(cell) => {
-                        return cell ? `₹${parseFloat(cell).toFixed(2)}` : '₹0.00';
+                      dataFormat={(cell, row) => {
+                        const supplierCurrency = row.supplier?.currency;
+                        const companyCurrency = row.company?.currency;
+                        return formatVoucherAmount(parseFloat(cell || 0), supplierCurrency, companyCurrency);
                       }}
                       width="11%"
                       thStyle={{

@@ -33,6 +33,9 @@ import {
   MapPin,
   Globe,
   Award,
+  AlertCircle,
+  CheckCircle,
+  Clock,
 } from 'react-feather';
 import SimpleBar from 'simplebar-react';
 import { useSelector, useDispatch } from 'react-redux';
@@ -46,12 +49,13 @@ import CartService from '../../services/CartService';
 import ApprovalPolicyManagementService from '../../services/ApprovalPolicyManagementService';
 import CatalogItemService from '../../services/CatalogItemService';
 import SupplierService from '../../services/SupplierService';
-import { getEntityType, getEntityId, getUserId, getUserRole, getCompanyName, setCompanyName } from '../../pages/localStorageUtil';
+import { getEntityType, getEntityId, getUserId, getUserRole, getCompanyName, setCompanyName, setCompanyCurrency, formatCurrency, getCompanyCurrency } from '../../pages/localStorageUtil';
 import { CartConstant } from '../../constant/CartConstant';
 import NotificationDD from './NotificationDD';
 import UserDashboardService from '../../services/UserDashboardService';
 import FeedBackService from '../../services/FeedBackService';
 import CompanyService from '../../services/CompanyService';
+import BillingService from '../../services/BillingService';
 
 const HorizontalHeader = () => {
   const navigate = useNavigate();
@@ -73,6 +77,10 @@ const HorizontalHeader = () => {
   const companyId = getEntityId();
   const userId = getUserId();
   const userRoles = getUserRole();
+  // Create stable boolean - computed once from localStorage data
+  const isCompanyAdmin = storedUserDetail?.roles?.includes('COMPANY_ADMIN') ||
+                         storedUserDetail?.authorities?.some(a => a.authority === 'ROLE_COMPANY_ADMIN') ||
+                         userRoles.includes('COMPANY_ADMIN');
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -85,6 +93,7 @@ const HorizontalHeader = () => {
   const [selectedSupplier, setSelectedSupplier] = useState(null);
   const [isLoadingSupplier, setIsLoadingSupplier] = useState(false);
   const [supplierRatings, setSupplierRatings] = useState(null);
+  const [subscriptionStatus, setSubscriptionStatus] = useState(null);
 
   const fetchCartCount = useCallback(async () => {
     try {
@@ -129,6 +138,47 @@ const HorizontalHeader = () => {
 
     return () => clearInterval(intervalId);
   }, [userId]);
+
+  // Fetch subscription status for COMPANY_ADMIN users - runs once on mount
+  useEffect(() => {
+    // Get values from localStorage directly to avoid dependency issues
+    const userDetails = JSON.parse(localStorage.getItem('userDetails'));
+    const isCompanyUser = userDetails?.entityType === 'COMPANY';
+    const roles = userDetails?.roles || [];
+    const authorities = userDetails?.authorities || [];
+    const hasAdminRole = roles.includes('COMPANY_ADMIN') ||
+                         authorities.some(a => a.authority === 'ROLE_COMPANY_ADMIN');
+
+    // Only fetch for company admins
+    if (!isCompanyUser || !hasAdminRole) {
+      return;
+    }
+
+    const fetchSubscriptionStatus = async () => {
+      try {
+        const response = await BillingService.getMyActiveSubscription();
+        if (response.data) {
+          setSubscriptionStatus({
+            status: response.data.status,
+            planName: response.data.planName,
+            trialEndDate: response.data.trialEndDate,
+            graceEndsAt: response.data.graceEndsAt,
+          });
+        }
+      } catch (error) {
+        // No active subscription or error fetching
+        console.debug('Could not fetch subscription status:', error);
+        setSubscriptionStatus({ status: 'NONE' });
+      }
+    };
+
+    fetchSubscriptionStatus();
+    // Refresh every 5 minutes
+    const intervalId = setInterval(fetchSubscriptionStatus, 300000);
+
+    return () => clearInterval(intervalId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Run once on mount
 
   // Sync search term from URL when on search-catalog page
   useEffect(() => {
@@ -221,7 +271,7 @@ const HorizontalHeader = () => {
     };
   }, []);
 
-  // Fetch and cache company name
+  // Fetch and cache company name and currency
   useEffect(() => {
     const fetchCompanyName = async () => {
       if (isCompany && companyId && !companyName) {
@@ -232,6 +282,8 @@ const HorizontalHeader = () => {
             const name = company.displayName || company.name;
             setCompanyNameState(name);
             setCompanyName(name); // Store in localStorage
+            // Store company currency in localStorage (default to INR if not set)
+            setCompanyCurrency(company.currency || 'INR');
           }
         } catch (error) {
           console.error('Error fetching company name:', error);
@@ -242,14 +294,6 @@ const HorizontalHeader = () => {
     fetchCompanyName();
   }, [isCompany, companyId, companyName]);
 
-  const formatCurrency = (amount, currency = 'USD') => {
-    if (!amount && amount !== 0) return 'N/A';
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency,
-      minimumFractionDigits: 2,
-    }).format(amount);
-  };
 
   const handleSearch = async () => {
     if (searchTerm.trim() === '') {
@@ -460,7 +504,7 @@ const HorizontalHeader = () => {
         qty: 1,
         price: selectedProduct.UnitPrice || 0,
         unitOfMeasure: selectedProduct.UnitOfMeasurement || 'piece',
-        currencyCode: selectedProduct.Currency || 'USD',
+        currencyCode: selectedProduct.Currency || getCompanyCurrency(),
         internalBuyerQuoteFile: 0,
         priceUpdate: false,
         classId: null,
@@ -486,12 +530,10 @@ const HorizontalHeader = () => {
 
       navigate(`/cartDetails/${newCartId}`);
     } catch (error) {
-      console.error('Error creating cart and adding product:', error);
-      if (error.response?.data?.errorMessage) {
-        toast.error(error.response.data.errorMessage);
-      } else {
-        toast.error('Failed to create cart');
-      }
+      // After apiClient.formatError: error.data contains response data, error.message contains the message
+      const errorMessage = error?.data?.errorMessage || error?.message || 'Failed to create cart';
+      console.error('Error creating cart and adding product:', errorMessage);
+      // Note: apiClient already shows toast for 400/500 errors
     } finally {
       setIsAddingToCart(false);
     }
@@ -567,6 +609,36 @@ const HorizontalHeader = () => {
     setSupplierModal(false);
     setSelectedSupplier(null);
     setSupplierRatings(null);
+  };
+
+  // Get subscription badge configuration based on status
+  const getSubscriptionBadgeConfig = () => {
+    if (!subscriptionStatus || subscriptionStatus.status === 'NONE') {
+      return { color: '#dc3545', bgColor: 'rgba(220, 53, 69, 0.1)', icon: AlertCircle, label: 'No Subscription', tooltip: 'No active subscription' };
+    }
+
+    switch (subscriptionStatus.status) {
+      case 'ACTIVE':
+        return { color: '#28a745', bgColor: 'rgba(40, 167, 69, 0.1)', icon: CheckCircle, label: 'Active', tooltip: `Plan: ${subscriptionStatus.planName || 'Unknown'}` };
+      case 'TRIAL':
+        const trialEnd = subscriptionStatus.trialEndDate ? new Date(subscriptionStatus.trialEndDate) : null;
+        const daysLeft = trialEnd ? Math.ceil((trialEnd - new Date()) / (1000 * 60 * 60 * 24)) : 0;
+        const trialLabel = daysLeft > 0 ? `Trial (${daysLeft}d)` : 'Trial Ended';
+        const trialColor = daysLeft > 3 ? '#17a2b8' : '#ffc107';
+        return { color: trialColor, bgColor: `rgba(${daysLeft > 3 ? '23, 162, 184' : '255, 193, 7'}, 0.1)`, icon: Clock, label: trialLabel, tooltip: `Trial ends: ${trialEnd ? trialEnd.toLocaleDateString() : 'Unknown'}` };
+      case 'PAST_DUE':
+        const graceEnd = subscriptionStatus.graceEndsAt ? new Date(subscriptionStatus.graceEndsAt) : null;
+        const graceDaysLeft = graceEnd ? Math.ceil((graceEnd - new Date()) / (1000 * 60 * 60 * 24)) : 0;
+        return { color: '#ffc107', bgColor: 'rgba(255, 193, 7, 0.1)', icon: AlertCircle, label: `Grace (${graceDaysLeft}d)`, tooltip: `Payment overdue. Grace period ends: ${graceEnd ? graceEnd.toLocaleDateString() : 'Unknown'}` };
+      case 'SUSPENDED':
+        return { color: '#dc3545', bgColor: 'rgba(220, 53, 69, 0.1)', icon: AlertCircle, label: 'Suspended', tooltip: 'Subscription suspended - contact support' };
+      case 'CANCELED':
+        return { color: '#6c757d', bgColor: 'rgba(108, 117, 125, 0.1)', icon: AlertCircle, label: 'Canceled', tooltip: 'Subscription canceled' };
+      case 'EXPIRED':
+        return { color: '#dc3545', bgColor: 'rgba(220, 53, 69, 0.1)', icon: AlertCircle, label: 'Expired', tooltip: 'Subscription expired - please renew' };
+      default:
+        return { color: '#6c757d', bgColor: 'rgba(108, 117, 125, 0.1)', icon: AlertCircle, label: subscriptionStatus.status, tooltip: subscriptionStatus.status };
+    }
   };
 
   const renderStarRating = (rating) => {
@@ -1207,6 +1279,38 @@ const HorizontalHeader = () => {
 
         {/* Right Section - Icons and Profile */}
         <div className="d-flex align-items-center">
+          {/* Subscription Status Badge - Only for Company Admins */}
+          {isCompany && isCompanyAdmin && subscriptionStatus && (() => {
+            const badgeConfig = getSubscriptionBadgeConfig();
+            const IconComponent = badgeConfig.icon;
+            return (
+              <Link
+                to="/billing-dashboard"
+                className="d-none d-md-flex align-items-center me-3 text-decoration-none"
+                style={{
+                  backgroundColor: badgeConfig.bgColor,
+                  border: `1px solid ${badgeConfig.color}`,
+                  borderRadius: '20px',
+                  padding: '4px 12px',
+                  transition: 'all 0.2s ease',
+                }}
+                title={badgeConfig.tooltip}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-1px)';
+                  e.currentTarget.style.boxShadow = `0 2px 8px ${badgeConfig.bgColor}`;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = 'none';
+                }}
+              >
+                <IconComponent size={14} style={{ color: badgeConfig.color, marginRight: '6px' }} />
+                <span style={{ color: badgeConfig.color, fontSize: '12px', fontWeight: '600' }}>
+                  {badgeConfig.label}
+                </span>
+              </Link>
+            );
+          })()}
           <UncontrolledDropdown>
             <DropdownToggle
               className="hov-dd border-0 elegant-icon-button"

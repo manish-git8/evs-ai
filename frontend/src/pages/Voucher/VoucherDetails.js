@@ -18,7 +18,8 @@ import 'react-toastify/dist/ReactToastify.css';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import VoucherService from '../../services/VoucherService';
 import FileUploadService from '../../services/FileUploadService';
-import { formatCurrencies, getEntityId, getUserRole } from '../localStorageUtil';
+import { getEntityId, getUserRole, getCompanyCurrency } from '../localStorageUtil';
+import { formatCurrency, formatDualCurrency, getExchangeRate, getUserType } from '../../utils/currencyUtils';
 import { getBadgeColor, getStatusLabel } from '../../constant/VoucherConstant';
 import '../CompanyManagement/ReactBootstrapTable.scss';
 
@@ -35,6 +36,9 @@ const VoucherDetails = () => {
   const [orderNo, setOrderNo] = useState('N/A');
   const [previewFile, setPreviewFile] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [exchangeRate, setExchangeRate] = useState(1);
+  const companyCurrency = getCompanyCurrency();
+  const userType = getUserType();
   const [modalOpen, setModalOpen] = useState(false);
   const [approveModalOpen, setApproveModalOpen] = useState(false);
   const [holdModalOpen, setHoldModalOpen] = useState(false);
@@ -124,6 +128,65 @@ const VoucherDetails = () => {
       }
     };
   }, [voucherHeadId, companyId]);
+
+  // Fetch exchange rate when voucher data is loaded
+  useEffect(() => {
+    const fetchExchangeRate = async () => {
+      if (voucher?.supplier?.currency && voucher.supplier.currency !== companyCurrency) {
+        try {
+          const rate = await getExchangeRate(voucher.supplier.currency, companyCurrency);
+          setExchangeRate(rate);
+        } catch (error) {
+          console.error('Error fetching exchange rate:', error);
+          setExchangeRate(1);
+        }
+      } else {
+        setExchangeRate(1);
+      }
+    };
+    fetchExchangeRate();
+  }, [voucher?.supplier?.currency, companyCurrency]);
+
+  // Get supplier currency, fallback to company currency
+  const getSupplierCurrency = () => {
+    return voucher?.supplier?.currency || companyCurrency;
+  };
+
+  // Format amount with dual currency display (inline for totals)
+  const formatVoucherAmount = (amount) => {
+    const supplierCurrency = getSupplierCurrency();
+    if (supplierCurrency === companyCurrency || !amount) {
+      return formatCurrency(amount, supplierCurrency);
+    }
+    const convertedAmount = amount * exchangeRate;
+    return formatDualCurrency({
+      originalPrice: amount,
+      originalCurrency: supplierCurrency,
+      convertedPrice: convertedAmount,
+      convertedCurrency: companyCurrency,
+    }, userType);
+  };
+
+  // Format amount with stacked dual currency display (for table cells)
+  const formatVoucherAmountStacked = (amount) => {
+    const supplierCurrency = getSupplierCurrency();
+    if (supplierCurrency === companyCurrency || !amount) {
+      return formatCurrency(amount, supplierCurrency);
+    }
+    const convertedAmount = amount * exchangeRate;
+    const primary = userType === 'company'
+      ? formatCurrency(convertedAmount, companyCurrency)
+      : formatCurrency(amount, supplierCurrency);
+    const secondary = userType === 'company'
+      ? formatCurrency(amount, supplierCurrency)
+      : formatCurrency(convertedAmount, companyCurrency);
+    return (
+      <div style={{ lineHeight: '1.2' }}>
+        <div>{primary}</div>
+        <div style={{ fontSize: '0.75rem', color: '#6c757d' }}>({secondary})</div>
+      </div>
+    );
+  };
 
   const handleDownloadVoucher = async () => {
     try {
@@ -914,31 +977,30 @@ const VoucherDetails = () => {
                           </Badge>
                         </div>
                         <div className="table-responsive">
-                          <table className="table table-sm mb-0" style={{ fontSize: '0.85rem' }}>
+                          <table className="table table-sm mb-0" style={{ fontSize: '0.85rem', tableLayout: 'fixed', width: '100%' }}>
                             <thead style={{ backgroundColor: '#009efb' }}>
                               <tr>
                                 <th
-                                  className="text-nowrap"
-                                  style={{ padding: '8px', fontWeight: '600', color: 'white' }}
+                                  style={{ padding: '8px', fontWeight: '600', color: 'white', width: '12%' }}
                                 >
                                   Part ID
                                 </th>
-                                <th style={{ padding: '8px', fontWeight: '600', color: 'white' }}>
+                                <th style={{ padding: '8px', fontWeight: '600', color: 'white', width: '28%' }}>
                                   Description
                                 </th>
-                                <th style={{ padding: '8px', fontWeight: '600', color: 'white' }}>
+                                <th style={{ padding: '8px', fontWeight: '600', color: 'white', width: '8%' }}>
                                   U/M
                                 </th>
-                                <th style={{ padding: '8px', fontWeight: '600', color: 'white' }}>
+                                <th style={{ padding: '8px', fontWeight: '600', color: 'white', width: '10%', textAlign: 'center' }}>
                                   Qty Rcd
                                 </th>
-                                <th style={{ padding: '8px', fontWeight: '600', color: 'white' }}>
+                                <th style={{ padding: '8px', fontWeight: '600', color: 'white', width: '10%', textAlign: 'center' }}>
                                   Qty Acc
                                 </th>
-                                <th style={{ padding: '8px', fontWeight: '600', color: 'white' }}>
+                                <th style={{ padding: '8px', fontWeight: '600', color: 'white', width: '16%' }}>
                                   Unit Price
                                 </th>
-                                <th style={{ padding: '8px', fontWeight: '600', color: 'white' }}>
+                                <th style={{ padding: '8px', fontWeight: '600', color: 'white', width: '16%' }}>
                                   Extended
                                 </th>
                               </tr>
@@ -947,12 +1009,11 @@ const VoucherDetails = () => {
                               {voucherDetail.grn.grnDetails.map((grnDetail) => (
                                 <tr key={grnDetail.grnDetailID}>
                                   <td
-                                    className="text-nowrap"
-                                    style={{ padding: '6px 8px', color: '#495057' }}
+                                    style={{ padding: '6px 8px', color: '#495057', wordBreak: 'break-word' }}
                                   >
                                     {grnDetail.partId || '-'}
                                   </td>
-                                  <td style={{ padding: '6px 8px', color: '#495057' }}>
+                                  <td style={{ padding: '6px 8px', color: '#495057', wordBreak: 'break-word' }}>
                                     {grnDetail.partDescription || '-'}
                                   </td>
                                   <td style={{ padding: '6px 8px', color: '#495057' }}>
@@ -972,7 +1033,7 @@ const VoucherDetails = () => {
                                   </td>
                                   <td style={{ padding: '6px 8px', color: '#495057' }}>
                                     {grnDetail.unitPrice != null
-                                      ? formatCurrencies(grnDetail.unitPrice)
+                                      ? formatVoucherAmountStacked(grnDetail.unitPrice)
                                       : '-'}
                                   </td>
                                   <td
@@ -980,9 +1041,7 @@ const VoucherDetails = () => {
                                     style={{ padding: '6px 8px', color: '#212529' }}
                                   >
                                     {grnDetail.unitPrice && grnDetail.qtyAccepted
-                                      ? formatCurrencies(
-                                        grnDetail.unitPrice * grnDetail.qtyAccepted,
-                                      )
+                                      ? formatVoucherAmountStacked(grnDetail.unitPrice * grnDetail.qtyAccepted)
                                       : '-'}
                                   </td>
                                 </tr>
@@ -1019,9 +1078,10 @@ const VoucherDetails = () => {
                               color: '#212529',
                               fontWeight: 'bold',
                               textAlign: 'right',
+                              whiteSpace: 'nowrap',
                             }}
                           >
-                            {formatCurrencies(
+                            {formatVoucherAmount(
                               voucher.voucherDetails.reduce((total, detail) => {
                                 const detailTotal = detail.grn.grnDetails.reduce((sum, item) => {
                                   return sum + item.unitPrice * item.qtyAccepted;
@@ -1039,6 +1099,7 @@ const VoucherDetails = () => {
                               fontSize: '0.85rem',
                               color: '#6c757d',
                               textAlign: 'right',
+                              whiteSpace: 'nowrap',
                             }}
                           >
                             Tax Total:
@@ -1051,9 +1112,10 @@ const VoucherDetails = () => {
                               color: '#212529',
                               fontWeight: 'bold',
                               textAlign: 'right',
+                              whiteSpace: 'nowrap',
                             }}
                           >
-                            {formatCurrencies(voucher.tax || 0)}
+                            {formatVoucherAmount(voucher.tax || 0)}
                           </td>
                         </tr>
                         <tr>
@@ -1064,6 +1126,7 @@ const VoucherDetails = () => {
                               fontSize: '0.85rem',
                               color: '#6c757d',
                               textAlign: 'right',
+                              whiteSpace: 'nowrap',
                             }}
                           >
                             Shipping Total:
@@ -1076,9 +1139,10 @@ const VoucherDetails = () => {
                               color: '#212529',
                               fontWeight: 'bold',
                               textAlign: 'right',
+                              whiteSpace: 'nowrap',
                             }}
                           >
-                            {formatCurrencies(voucher.freight || 0)}
+                            {formatVoucherAmount(voucher.freight || 0)}
                           </td>
                         </tr>
                         <tr style={{ borderTop: '1px solid #dee2e6' }}>
@@ -1090,6 +1154,7 @@ const VoucherDetails = () => {
                               color: '#212529',
                               fontWeight: 'bold',
                               textAlign: 'right',
+                              whiteSpace: 'nowrap',
                             }}
                           >
                             Invoice Total:
@@ -1102,9 +1167,10 @@ const VoucherDetails = () => {
                               color: '#009efb',
                               fontWeight: 'bold',
                               textAlign: 'right',
+                              whiteSpace: 'nowrap',
                             }}
                           >
-                            {formatCurrencies(voucher.finalAmount || 0)}
+                            {formatVoucherAmount(voucher.finalAmount || 0)}
                           </td>
                         </tr>
                       </tbody>

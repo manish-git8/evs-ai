@@ -10,7 +10,7 @@ import {
 import { toast } from 'react-toastify';
 import CompanyService from '../../services/CompanyService';
 import ComponentCard from '../../components/ComponentCard';
-import { getEntityId } from '../localStorageUtil';
+import { getEntityId, formatCurrency } from '../localStorageUtil';
 
 const CompanyDashboard = () => {
   const companyId = getEntityId();
@@ -57,13 +57,7 @@ const CompanyDashboard = () => {
     return new Date(dateString).toLocaleString();
   };
 
-  const formatCurrency = (amount) => {
-    if (amount == null || Number.isNaN(Number(amount))) return '$0.00';
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD'
-    }).format(Number(amount));
-  };
+  // formatCurrency is imported from localStorageUtil and uses company currency
 
   const getChangeTypeStyle = (changeType) => {
     const styles = {

@@ -118,10 +118,6 @@ async def get_carts_paginated(
             if not batch_items:
                 break  # No more data from API
 
-            # Log status values on first page for debugging
-            if page_num == 0:
-                statuses_found = set((c.get("cartStatusType") or "NONE") for c in batch_items)
-                logger.info(f"[CART] Requested status='{status}', page 0 has {len(batch_items)} items. cartStatusType values: {statuses_found}")
 
             for c in batch_items:
                 cart_status = (c.get("cartStatusType") or c.get("status") or "").lower().replace("_", " ")
@@ -136,7 +132,6 @@ async def get_carts_paginated(
 
             page_num += 1
 
-        logger.info(f"[CART] Filter '{status_lower}': {len(filtered)} matches found across {page_num + 1} page(s)")
         return {
             "items": filtered[:PAGE_SIZE],
             "totalPages": 1,
@@ -226,7 +221,6 @@ async def approve_cart(
         "user": {"userId": uid, "firstName": first_name},
         "documentId": "",
     }
-    logger.info(f"[APPROVE-CART] URL={url}  body={body}")
     return await _request("POST", url, token=token, json=body)
 
 
@@ -334,12 +328,8 @@ async def get_pos_paginated(
         }
         if search:
             params["search"] = search
-        logger.info(f"[PO] Using byStatus endpoint: {url} with orderStatus='{status}'")
         data = await _request("GET", url, token=token, params=params)
         items = data.get("content") or data.get("data") or (data if isinstance(data, list) else [])
-        logger.info(f"[PO] byStatus returned {len(items)} items for status='{status}'")
-        if items:
-            logger.info(f"[PO] First item keys: {list(items[0].keys())[:15]}")
         return {
             "items": items[:PAGE_SIZE],
             "totalPages": data.get("totalPages", 1),
@@ -519,16 +509,11 @@ async def get_rfqs_paginated(
             params["search"] = search
         data = await _request("GET", url, token=token, params=params)
         all_items = data.get("content") or data.get("data") or (data if isinstance(data, list) else [])
-        logger.info(f"[RFQ GENERAL] Fetched {len(all_items)} items from /rfqs endpoint")
-        if all_items:
-            rfq_statuses_found = set((r.get("rfqStatus") or "NONE") for r in all_items)
-            logger.info(f"[RFQ GENERAL] rfqStatus values: {rfq_statuses_found}")
         status_lower = status.lower().replace("_", " ")
         filtered = [
             r for r in all_items
             if (r.get("rfqStatus") or r.get("status") or "").lower().replace("_", " ") == status_lower
         ]
-        logger.info(f"[RFQ GENERAL] Filter='{status}' -> '{status_lower}': {len(filtered)} matches")
         return {
             "items": filtered[:PAGE_SIZE],
             "totalPages": 1,
@@ -586,9 +571,6 @@ async def get_rfqs_by_status(
         if not batch_items:
             break
 
-        if page_num == 0:
-            rfq_statuses_found = set((r.get("rfqStatus") or "NONE") for r in batch_items)
-            logger.info(f"[RFQ BY STATUS] Requested '{signoff_status}', page 0 has {len(batch_items)} items. rfqStatus values: {rfq_statuses_found}")
 
         for r in batch_items:
             rfq_status = (r.get("rfqStatus") or r.get("status") or "").lower().replace("_", " ")
@@ -601,8 +583,6 @@ async def get_rfqs_by_status(
             break
 
         page_num += 1
-
-    logger.info(f"[RFQ BY STATUS] Filter '{status_lower}' (aliases={match_values}): {len(filtered)} matches across {page_num + 1} page(s)")
 
     return {
         "items": filtered[:PAGE_SIZE],
@@ -630,7 +610,6 @@ async def get_rfq_approvals_paginated(
     if search:
         params["search"] = search
     data = await _request("GET", url, token=token, params=params)
-    logger.info(f"[RFQ APPROVALS RAW] url={url}, signoffStatus={signoff_status}, raw keys={list(data.keys()) if isinstance(data, dict) else 'list'}, content count={len(data.get('content', []) if isinstance(data, dict) else data)}")
     return _paginate(data, effective_size, page - 1)
 
 
@@ -672,7 +651,6 @@ async def get_rfq_signoff_data(token: str, company_id: int, rfq_id: str, user_id
                         "created_by": su.get("createdBy"),
                         "updated_by": su.get("updatedBy"),
                     }
-                    logger.info(f"[RFQ-SIGNOFF-DATA] Found signoff data for user {uid} in RFQ {rfq_id}: {result}")
                     return result
         
         logger.warning(f"[RFQ-SIGNOFF-DATA] No signoff user match for userId={uid} in RFQ {rfq_id}")
@@ -706,7 +684,6 @@ async def approve_rfq(
         "createdBy": sd.get("created_by"),
         "updatedBy": sd.get("updated_by"),
     }
-    logger.info(f"[APPROVE-RFQ] URL={url}  body={body}")
     return await _request("POST", url, token=token, json=body)
 
 
@@ -734,7 +711,6 @@ async def reject_rfq(
         "createdBy": sd.get("created_by"),
         "updatedBy": sd.get("updated_by"),
     }
-    logger.info(f"[REJECT-RFQ] URL={url}  body={body}")
     return await _request("POST", url, token=token, json=body)
 
 

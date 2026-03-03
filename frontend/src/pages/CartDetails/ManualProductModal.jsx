@@ -23,6 +23,7 @@ const ManualProductModal = ({
         description: '',
         price: '',
         unitOfMeasure: 'Each',
+        saveToInternalCatalog: true, // Default to true
     });
     useEffect(() => {
         if (!isOpen) return;
@@ -33,6 +34,7 @@ const ManualProductModal = ({
                 description: '',
                 price: '',
                 unitOfMeasure: safeData.unitOfMeasure ?? 'Each',
+                saveToInternalCatalog: true,
             });
             return;
         }
@@ -42,13 +44,15 @@ const ManualProductModal = ({
             description: '',
             price:  '',
             unitOfMeasure: safeData.unitOfMeasure ?? 'Each',
+            saveToInternalCatalog: true,
         });
     }, [safeData, isOpen]);
 
 
     const isValid =
         form.description.trim() !== '' &&
-        Number(form.price) > 0;
+        Number(form.price) > 0 &&
+        (form.saveToInternalCatalog || form.partId.trim() !== '');
 
     return (
         <Modal isOpen={isOpen} toggle={onClose} centered backdrop="static">
@@ -57,21 +61,31 @@ const ManualProductModal = ({
             </ModalHeader>
 
             <ModalBody>
-                <div className="mb-3">
-                    <Label>
-                        Part ID <span className="text-danger">*</span>
-                    </Label>
-                    <Input
-                        value={form.partId}
-                        onChange={(e) =>
-                            setForm((prev) => ({
-                                ...prev,
-                                partId: e.target.value,
-                            }))
-                        }
-                        placeholder="Enter Part ID"
-                    />
-                </div>
+                {!form.saveToInternalCatalog && (
+                    <div className="mb-3">
+                        <Label>
+                            Part ID <span className="text-danger">*</span>
+                        </Label>
+                        <Input
+                            value={form.partId}
+                            onChange={(e) =>
+                                setForm((prev) => ({
+                                    ...prev,
+                                    partId: e.target.value,
+                                }))
+                            }
+                            placeholder="Enter Part ID"
+                        />
+                    </div>
+                )}
+                {form.saveToInternalCatalog && (
+                    <div className="mb-3">
+                        <div className="alert alert-info py-2" style={{ fontSize: '12px' }}>
+                            <i className="bi bi-info-circle me-1"></i>
+                            Part ID will be auto-generated when saved to internal catalog
+                        </div>
+                    </div>
+                )}
 
                 <div className="mb-3">
                     <Label>
@@ -137,6 +151,31 @@ const ManualProductModal = ({
                         ))}
                     </Input>
                 </div>
+
+                <div className="mb-3">
+                    <div className="form-check">
+                        <Input
+                            type="checkbox"
+                            className="form-check-input"
+                            id="saveToInternalCatalog"
+                            checked={form.saveToInternalCatalog}
+                            onChange={(e) =>
+                                setForm((prev) => ({
+                                    ...prev,
+                                    saveToInternalCatalog: e.target.checked,
+                                }))
+                            }
+                        />
+                        <Label className="form-check-label" for="saveToInternalCatalog">
+                            Save to Internal Catalog
+                        </Label>
+                    </div>
+                    <small className="text-muted">
+                        {form.saveToInternalCatalog
+                            ? 'A new Part ID will be auto-generated and saved to your internal catalog'
+                            : 'This product will only be added to the cart without saving to catalog'}
+                    </small>
+                </div>
             </ModalBody>
 
             <ModalFooter>
@@ -146,7 +185,11 @@ const ManualProductModal = ({
                 <Button
                     color="primary"
                     disabled={!isValid}
-                    onClick={() => onSave({ ...form, cartDetailId: safeData.cartDetailId })}
+                    onClick={() => onSave({
+                        ...form,
+                        cartDetailId: safeData.cartDetailId,
+                        saveToInternalCatalog: form.saveToInternalCatalog,
+                    })}
                 >
                     Save
                 </Button>

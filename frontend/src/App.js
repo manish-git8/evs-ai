@@ -8,6 +8,7 @@ import { ToastContainer } from 'react-toastify';
 import Themeroutes from './routes/Router';
 import ThemeSelector from './layouts/theme/ThemeSelector';
 import Loader from './layouts/loader/Loader';
+import { FeatureFlagProvider } from './hooks/useFeatureFlags';
 
 const App = () => {
   const routing = useRoutes(Themeroutes);
@@ -81,31 +82,33 @@ const App = () => {
 
   return (
     <Suspense fallback={<Loader />}>
-      <div
-        className={`${direction ? 'rtl' : 'ltr'} ${isMode ? 'dark' : ''}`}
-        dir={direction ? 'rtl' : 'ltr'}
-      >
-        <ThemeSelector />
-        {routing}
-        <ToastContainer
-          position="top-right"
-          autoClose={2000}
-          hideProgressBar={false}
-          newestOnTop
-          closeOnClick
-          rtl={false}
-          pauseOnFocusLoss
-          draggable
-          pauseOnHover={false}
-          style={{ top: '12px', right: '12px' }}
-          toastStyle={{
-            marginBottom: '0',
-            position: 'absolute',
-            top: 0,
-            right: 0,
-          }}
-        />
-      </div>
+      <FeatureFlagProvider>
+        <div
+          className={`${direction ? 'rtl' : 'ltr'} ${isMode ? 'dark' : ''}`}
+          dir={direction ? 'rtl' : 'ltr'}
+        >
+          <ThemeSelector />
+          {routing}
+          <ToastContainer
+            position="top-right"
+            autoClose={2000}
+            hideProgressBar={false}
+            newestOnTop
+            closeOnClick
+            rtl={false}
+            pauseOnFocusLoss
+            draggable
+            pauseOnHover={false}
+            style={{ top: '12px', right: '12px' }}
+            toastStyle={{
+              marginBottom: '0',
+              position: 'absolute',
+              top: 0,
+              right: 0,
+            }}
+          />
+        </div>
+      </FeatureFlagProvider>
     </Suspense>
   );
 };

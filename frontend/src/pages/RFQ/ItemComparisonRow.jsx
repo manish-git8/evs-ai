@@ -8,6 +8,7 @@ import {
   Button,
 } from "reactstrap";
 import { FaChevronDown, FaChevronRight, FaTrophy, FaCheck, FaHistory, FaExclamationTriangle } from "react-icons/fa";
+import { formatCurrency } from "../../utils/currencyUtils";
 
 /**
  * ItemComparisonRow - Expandable row showing all supplier quotes for a single item
@@ -106,7 +107,7 @@ const ItemComparisonRow = ({
           {lowestPriceSupplierId && (
             <Badge color="warning" pill title="Best Price Available">
               <FaTrophy size={10} className="me-1" />
-              Best: ${calculateItemTotal(lowestPriceSupplierId).toFixed(2)}
+              Best: {formatCurrency(calculateItemTotal(lowestPriceSupplierId), suppliers.find(s => s.supplierId === lowestPriceSupplierId)?.supplierCurrency || 'USD')}
             </Badge>
           )}
         </div>
@@ -239,7 +240,7 @@ const ItemComparisonRow = ({
                         className={`fw-bold ${isLowestPrice ? "text-success" : ""}`}
                         style={{ fontSize: "16px" }}
                       >
-                        ${itemTotal.toFixed(2)}
+                        {formatCurrency(itemTotal, supplier.supplierCurrency || 'USD')}
                       </span>
                     </div>
                   </div>

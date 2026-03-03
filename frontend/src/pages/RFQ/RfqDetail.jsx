@@ -38,7 +38,8 @@ import {
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import FileUploadService from '../../services/FileUploadService';
 import RqfService from '../../services/RfqService';
-import { getEntityId, getUserId } from '../localStorageUtil';
+import { getEntityId, getUserId, getCompanyCurrency } from '../localStorageUtil';
+import { formatCurrency, getCurrencySymbol, formatDualCurrency, getExchangeRate } from '../../utils/currencyUtils';
 import '../CompanyManagement/ReactBootstrapTable.scss';
 import './RfqDetail.scss';
 import './SupplierResponseForm.scss';
@@ -56,6 +57,7 @@ import { RFQ_STATUS, RFQ_SUPPLIER_STATUS } from '../../constant/RfqConstant';
 import AttachmentsModal from './AttachmentsModal';
 import RfqHistoryTimeline from './components/RfqHistoryTimeline';
 import aiIcon from '../../assets/images/ai_image/Ai_star_img.png';
+import { useFeatureFlags } from '../../hooks/useFeatureFlags';
 
 // Debounce utility function
 const debounce = (func, wait) => {
@@ -77,6 +79,7 @@ const RFQDetail = () => {
   const isFromDashboard = params.get('dashboard') === 'true';
   const companyId = getEntityId();
   const userId = getUserId();
+  const { isBlocked, getUsage, getFeature } = useFeatureFlags();
   const [rfqData, setRfqData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -128,6 +131,10 @@ const RFQDetail = () => {
   const [generatingPOForSuppliers, setGeneratingPOForSuppliers] = useState(new Set());
   const [suppliersWithPriceChanges, setSuppliersWithPriceChanges] = useState(new Set());
   const [negotiationLoading, setNegotiationLoading] = useState(false);
+
+  // Currency conversion state
+  const companyCurrency = getCompanyCurrency();
+  const [exchangeRates, setExchangeRates] = useState({}); // { 'USD': 1, 'EUR': 0.92, ... } rates to convert TO company currency
 
   // Refs for PO generation
   const poGenerationInProgress = useRef(new Set());
@@ -483,6 +490,44 @@ const RFQDetail = () => {
     fetchRFQDetail();
     fetchAllSuppliers();
   }, [rfqId, companyId, loadSupplierResponseData]);
+
+  // Fetch exchange rates for all supplier currencies
+  useEffect(() => {
+    const fetchExchangeRates = async () => {
+      if (!suppliersWithDetails.length) return;
+
+      // Get unique supplier currencies
+      const currencies = [...new Set(
+        suppliersWithDetails
+          .map(s => s.supplierCurrency)
+          .filter(Boolean)
+      )];
+
+      // Add company currency if not present
+      if (!currencies.includes(companyCurrency)) {
+        currencies.push(companyCurrency);
+      }
+
+      const rates = { [companyCurrency]: 1 }; // Company currency to itself is 1
+
+      // Fetch exchange rates for each currency to company currency
+      for (const currency of currencies) {
+        if (currency !== companyCurrency) {
+          try {
+            const rate = await getExchangeRate(currency, companyCurrency);
+            rates[currency] = rate;
+          } catch (error) {
+            console.error(`Failed to fetch rate for ${currency}:`, error);
+            rates[currency] = 1; // Fallback to 1:1
+          }
+        }
+      }
+
+      setExchangeRates(rates);
+    };
+
+    fetchExchangeRates();
+  }, [suppliersWithDetails, companyCurrency]);
 
   // Fetch billing addresses
   useEffect(() => {
@@ -1316,6 +1361,27 @@ const RFQDetail = () => {
   }, [searchTerm, companyId]);
 
   const handleAIRecommendationClick = useCallback(async () => {
+    // Check if AI feature is blocked due to usage limits
+    if (isBlocked('AI_CYCLES')) {
+      const feature = getFeature('AI_CYCLES');
+      const usage = getUsage('AI_CYCLES');
+      Swal.fire({
+        title: 'AI Limit Reached',
+        html: `
+          <div class="text-center">
+            <i class="bi bi-exclamation-octagon text-danger" style="font-size: 48px;"></i>
+            <p class="mt-3">${feature?.blockReason || 'You have reached your AI usage limit for this billing period.'}</p>
+            <p class="text-muted">Used: ${usage.currentUsage} / ${usage.limit}</p>
+            <p class="mt-2">Please upgrade your plan to continue using AI features.</p>
+          </div>
+        `,
+        icon: null,
+        confirmButtonText: 'OK',
+        confirmButtonColor: '#dc3545',
+      });
+      return;
+    }
+
     setLoadingRecommendation(true);
     const supplierIds = suppliersWithDetails.map((supplier) => supplier.supplierId);
 
@@ -1332,16 +1398,28 @@ const RFQDetail = () => {
       });
       setShowAIRecommendationModal(true);
     } catch (err) {
+      // After apiClient.formatError: err.data contains response data, err.message contains the message
       const errorMessage =
-        err?.response?.data?.errorMessage ||
-        err?.response?.errorMessage ||
+        err?.data?.errorMessage ||
+        err?.message ||
         'Something went wrong. Please try again.';
-      toast.dismiss();
-      toast.error(errorMessage);
+
+      // Check if it's a usage limit error
+      if (errorMessage.toLowerCase().includes('limit') || errorMessage.toLowerCase().includes('usage')) {
+        toast.dismiss(); // Dismiss any existing toasts (apiClient may have shown one)
+        Swal.fire({
+          title: 'AI Limit Reached',
+          text: errorMessage,
+          icon: 'warning',
+          confirmButtonText: 'OK',
+          confirmButtonColor: '#dc3545',
+        });
+      }
+      // Note: Don't show toast for other errors - apiClient.handleBadRequest already shows one
     } finally {
       setLoadingRecommendation(false);
     }
-  }, [suppliersWithDetails]);
+  }, [suppliersWithDetails, isBlocked, getFeature, getUsage]);
 
   // Effect to fetch users when signoff modal is open
   useEffect(() => {
@@ -1486,32 +1564,53 @@ const RFQDetail = () => {
     [rfqData],
   );
 
+  // Helper function to convert amount to company currency
+  const convertToCompanyCurrency = useCallback(
+    (amount, fromCurrency) => {
+      if (!fromCurrency || fromCurrency === companyCurrency) return amount;
+      const rate = exchangeRates[fromCurrency] || 1;
+      return amount * rate;
+    },
+    [companyCurrency, exchangeRates],
+  );
+
+  // Calculate supplier total in both original and converted currency
   const calculateSupplierTotal = useCallback(
     (supplierId) => {
+      const supplier = suppliersWithDetails.find((s) => s.supplierId === supplierId);
       const supplierIndex = suppliersWithDetails.findIndex((s) => s.supplierId === supplierId);
-      if (supplierIndex === -1) return 0;
+      if (supplierIndex === -1) return { original: 0, converted: 0, currency: 'USD' };
 
-      return (
-        rfqData?.rfqItems?.reduce((total, item, itemIndex) => {
-          const responseItem = responseItems[supplierIndex]?.items[itemIndex];
-          const quantity = parseFloat(responseItem?.quantity || item.quantity);
-          const unitPrice = parseFloat(responseItem?.unitPrice || 0);
-          return total + quantity * unitPrice;
-        }, 0) || 0
-      );
+      const supplierCurrency = supplier?.supplierCurrency || 'USD';
+      const originalTotal = rfqData?.rfqItems?.reduce((total, item, itemIndex) => {
+        const responseItem = responseItems[supplierIndex]?.items[itemIndex];
+        const quantity = parseFloat(responseItem?.quantity || item.quantity);
+        const unitPrice = parseFloat(responseItem?.unitPrice || 0);
+        return total + quantity * unitPrice;
+      }, 0) || 0;
+
+      const convertedTotal = convertToCompanyCurrency(originalTotal, supplierCurrency);
+
+      return { original: originalTotal, converted: convertedTotal, currency: supplierCurrency };
     },
-    [suppliersWithDetails, rfqData, responseItems],
+    [suppliersWithDetails, rfqData, responseItems, convertToCompanyCurrency],
   );
 
   const memoizedSupplierTotals = useMemo(() => {
-    return sortedSuppliers.map((supplier) => ({
-      supplierId: supplier.supplierId,
-      total: calculateSupplierTotal(supplier.supplierId),
-    }));
+    return sortedSuppliers.map((supplier) => {
+      const totals = calculateSupplierTotal(supplier.supplierId);
+      return {
+        supplierId: supplier.supplierId,
+        total: totals.original,           // Original total in supplier currency
+        convertedTotal: totals.converted, // Converted to company currency for comparison
+        currency: totals.currency,
+      };
+    });
   }, [sortedSuppliers, calculateSupplierTotal]);
 
+  // Use CONVERTED totals for finding lowest (fair comparison across currencies)
   const lowestTotal = useMemo(
-    () => Math.min(...memoizedSupplierTotals.map((s) => s.total)),
+    () => Math.min(...memoizedSupplierTotals.filter(s => s.convertedTotal > 0).map((s) => s.convertedTotal)),
     [memoizedSupplierTotals],
   );
 
@@ -1526,7 +1625,10 @@ const RFQDetail = () => {
       const supplierIndex = suppliersWithDetails.findIndex(
         (s) => s.supplierId === supplier.supplierId,
       );
-      if (supplierIndex === -1) return { supplierId: supplier.supplierId, total: Infinity };
+      if (supplierIndex === -1) return { supplierId: supplier.supplierId, total: Infinity, convertedTotal: Infinity };
+
+      const supplierCurrency = supplier.supplierCurrency || 'USD';
+      let originalTotal = 0;
 
       const total = selectedItemIds.reduce((sum, itemId) => {
         const itemIndex = rfqData?.rfqItems?.findIndex((item) => item.rfqItemId === itemId);
@@ -1538,16 +1640,20 @@ const RFQDetail = () => {
         const unitPrice = parseFloat(responseItem?.unitPrice || 0);
 
         if (unitPrice > 0) {
+          originalTotal += quantity * unitPrice;
           return sum + quantity * unitPrice;
         }
         return sum + Infinity;
       }, 0);
 
-      return { supplierId: supplier.supplierId, total };
+      const convertedTotal = convertToCompanyCurrency(originalTotal, supplierCurrency);
+
+      return { supplierId: supplier.supplierId, total, convertedTotal, currency: supplierCurrency };
     });
 
-    const lowestSelectedTotal = Math.min(...supplierTotalsForSelected.map((s) => s.total));
-    const lowestSupplier = supplierTotalsForSelected.find((s) => s.total === lowestSelectedTotal);
+    // Use CONVERTED totals for comparison
+    const lowestSelectedTotal = Math.min(...supplierTotalsForSelected.map((s) => s.convertedTotal));
+    const lowestSupplier = supplierTotalsForSelected.find((s) => s.convertedTotal === lowestSelectedTotal);
 
     return {
       lowestTotal: lowestSelectedTotal === Infinity ? 0 : lowestSelectedTotal,
@@ -1555,47 +1661,102 @@ const RFQDetail = () => {
       supplierTotals: supplierTotalsForSelected,
       useSelectedItems: true,
     };
-  }, [selectedItems, sortedSuppliers, suppliersWithDetails, rfqData, responseItems, lowestTotal]);
+  }, [selectedItems, sortedSuppliers, suppliersWithDetails, rfqData, responseItems, lowestTotal, convertToCompanyCurrency]);
 
+  // Lowest price per item - uses CONVERTED prices for fair comparison
   const lowestPricePerItem = useMemo(() => {
     const lowestPrices = new Map();
     if (!rfqData?.rfqItems) return lowestPrices;
 
     rfqData.rfqItems.forEach((item) => {
-      let lowestPrice = Infinity;
+      let lowestConvertedPrice = Infinity;
+      let lowestOriginalPrice = 0;
       let lowestSupplierId = null;
+      let lowestCurrency = 'USD';
 
       responseItems.forEach((response) => {
+        const supplier = suppliersWithDetails.find((s) => s.supplierId === response.supplierId);
+        const supplierCurrency = supplier?.supplierCurrency || 'USD';
         const responseItem = response.items.find((i) => i.rfqItemId === item.rfqItemId);
         const price = parseFloat(responseItem?.unitPrice || 0);
-        if (price > 0 && price < lowestPrice) {
-          lowestPrice = price;
-          lowestSupplierId = response.supplierId;
+
+        if (price > 0) {
+          const convertedPrice = convertToCompanyCurrency(price, supplierCurrency);
+          if (convertedPrice < lowestConvertedPrice) {
+            lowestConvertedPrice = convertedPrice;
+            lowestOriginalPrice = price;
+            lowestSupplierId = response.supplierId;
+            lowestCurrency = supplierCurrency;
+          }
         }
       });
 
       if (lowestSupplierId) {
-        lowestPrices.set(item.rfqItemId, { price: lowestPrice, supplierId: lowestSupplierId });
+        lowestPrices.set(item.rfqItemId, {
+          price: lowestOriginalPrice,           // Original price in supplier currency
+          convertedPrice: lowestConvertedPrice, // Converted to company currency
+          supplierId: lowestSupplierId,
+          currency: lowestCurrency,
+        });
       }
     });
 
     return lowestPrices;
-  }, [rfqData, responseItems]);
+  }, [rfqData, responseItems, suppliersWithDetails, convertToCompanyCurrency]);
 
-  const totalValue = useMemo(
-    () =>
-      Array.from(selectedItems.entries()).reduce((total, [itemId, supplierId]) => {
-        const item = getItemDetails(itemId);
-        const supplierResponse = responseItems.find((r) => r.supplierId === supplierId);
-        const responseItem = supplierResponse?.items.find((i) => i.rfqItemId === itemId);
-        return (
-          total +
-          parseFloat(responseItem?.unitPrice || 0) *
-            parseFloat(responseItem?.quantity || item?.quantity || 0)
-        );
-      }, 0),
-    [selectedItems, responseItems, getItemDetails],
-  );
+  // Calculate total value with both original and converted amounts
+  const totalValueData = useMemo(() => {
+    const supplierTotals = new Map(); // Track totals per supplier currency
+
+    Array.from(selectedItems.entries()).forEach(([itemId, supplierId]) => {
+      const item = getItemDetails(itemId);
+      const supplier = suppliersWithDetails.find((s) => s.supplierId === supplierId);
+      const supplierCurrency = supplier?.supplierCurrency || 'USD';
+      const supplierResponse = responseItems.find((r) => r.supplierId === supplierId);
+      const responseItem = supplierResponse?.items.find((i) => i.rfqItemId === itemId);
+      const itemTotal = parseFloat(responseItem?.unitPrice || 0) *
+        parseFloat(responseItem?.quantity || item?.quantity || 0);
+
+      if (!supplierTotals.has(supplierCurrency)) {
+        supplierTotals.set(supplierCurrency, 0);
+      }
+      supplierTotals.set(supplierCurrency, supplierTotals.get(supplierCurrency) + itemTotal);
+    });
+
+    // Calculate converted total (sum of all converted to company currency)
+    let convertedTotal = 0;
+    supplierTotals.forEach((amount, currency) => {
+      convertedTotal += convertToCompanyCurrency(amount, currency);
+    });
+
+    // For display: if single currency, show that; otherwise show converted
+    const currencies = [...supplierTotals.keys()];
+    const isSingleCurrency = currencies.length === 1;
+    const originalCurrency = isSingleCurrency ? currencies[0] : null;
+    const originalTotal = isSingleCurrency ? supplierTotals.get(originalCurrency) : null;
+
+    return {
+      originalTotal,
+      originalCurrency,
+      convertedTotal,
+      convertedCurrency: companyCurrency,
+      isSingleCurrency,
+    };
+  }, [selectedItems, responseItems, getItemDetails, suppliersWithDetails, convertToCompanyCurrency, companyCurrency]);
+
+  // For backward compatibility
+  const totalValue = totalValueData.convertedTotal;
+
+  // Get currency for selected items total - if all from same supplier, use that currency
+  const selectedItemsCurrency = useMemo(() => {
+    const supplierIds = [...new Set(Array.from(selectedItems.values()))];
+    if (supplierIds.length === 1) {
+      const supplier = suppliersWithDetails.find(s => s.supplierId === supplierIds[0]);
+      return supplier?.supplierCurrency || 'USD';
+    }
+    // Mixed suppliers - use company currency since we're showing converted total
+    return companyCurrency;
+  }, [selectedItems, suppliersWithDetails, companyCurrency]);
 
   const canInviteSuppliers = useMemo(
     () =>
@@ -1613,7 +1774,7 @@ const RFQDetail = () => {
     [rfqData?.rfqStatus],
   );
 
-  const renderNegotiationHistory = (history) => {
+  const renderNegotiationHistory = (history, supplierCurrency = 'USD') => {
     if (!history) {
       return <div className="text-muted">No negotiation history</div>;
     }
@@ -1656,7 +1817,7 @@ const RFQDetail = () => {
                 alignItems: 'flex-start',
               }}
             >
-              <div style={{ fontWeight: 600 }}>$ {entry.price}</div>
+              <div style={{ fontWeight: 600 }}>{formatCurrency(entry.price, supplierCurrency)}</div>
 
               <div style={{ textAlign: 'right' }}>
                 <div style={{ fontWeight: 500 }}>
@@ -2600,7 +2761,17 @@ const RFQDetail = () => {
                         </div>
                         <div style={{ fontSize: '13px', color: '#666' }}>
                           Total Value:{' '}
-                          <strong style={{ color: '#333' }}>${totalValue.toFixed(2)}</strong>
+                          <strong style={{ color: '#333' }}>
+                            {totalValueData.isSingleCurrency && totalValueData.originalCurrency !== companyCurrency
+                              ? formatDualCurrency({
+                                  originalPrice: totalValueData.originalTotal,
+                                  originalCurrency: totalValueData.originalCurrency,
+                                  convertedPrice: totalValueData.convertedTotal,
+                                  convertedCurrency: companyCurrency,
+                                }, 'company')
+                              : formatCurrency(totalValueData.convertedTotal, companyCurrency)
+                            }
+                          </strong>
                         </div>
                       </div>
                     </div>
@@ -2632,9 +2803,11 @@ const RFQDetail = () => {
                   className="table-responsive"
                   style={{
                     scrollbarWidth: 'auto',
+                    overflowX: 'auto',
+                    overflowY: 'visible',
                   }}
                 >
-                  <Table striped bordered hover className="supplier-response-table">
+                  <Table striped bordered hover className="supplier-response-table" style={{ borderCollapse: 'separate', borderSpacing: 0 }}>
                     <thead>
                       <tr>
                         <th rowSpan={2} className="col-part-id">
@@ -2650,14 +2823,15 @@ const RFQDetail = () => {
                           Req Qty
                         </th>
                         {sortedSuppliers.map((supplier) => {
-                          const supplierTotal =
-                            memoizedSupplierTotals.find((s) => s.supplierId === supplier.supplierId)
-                              ?.total || 0;
+                          const supplierTotalData =
+                            memoizedSupplierTotals.find((s) => s.supplierId === supplier.supplierId);
+                          const supplierConvertedTotal = supplierTotalData?.convertedTotal || 0;
+                          // Use CONVERTED totals for fair comparison across currencies
                           const isLowestTotalSupplier =
                             selectedItems.size > 0
                               ? lowestBidForSelectedItems.lowestSupplierId ===
                                   supplier.supplierId && lowestBidForSelectedItems.lowestTotal > 0
-                              : supplierTotal === lowestTotal && supplierTotal > 0;
+                              : supplierConvertedTotal === lowestTotal && supplierConvertedTotal > 0;
 
                           return (
                             <th
@@ -2681,7 +2855,7 @@ const RFQDetail = () => {
                       <tr>
                         {sortedSuppliers.map((supplier) => (
                           <React.Fragment key={`subheader-${supplier.supplierId}`}>
-                            <th className="text-center border-left-thick">
+                            <th className="text-center border-left-thick col-select">
                               <Input
                                 type="checkbox"
                                 checked={isAllItemsSelectedForSupplier(supplier.supplierId)}
@@ -2691,13 +2865,13 @@ const RFQDetail = () => {
                                 disabled={
                                   isAnySignoffRequested || supplier.supplierStatus === 'rejected'
                                 }
-                                style={{ transform: 'scale(1.1)' }}
+                                style={{ transform: 'scale(0.85)', margin: 0 }}
                                 title="Select all items from this supplier"
                               />
                             </th>
-                            <th className="text-center">Unit Price</th>
-                            <th className="text-center">Accepted Qty</th>
-                            <th className="text-center">Negotiation</th>
+                            <th className="text-center col-unit-price">Price</th>
+                            <th className="text-center col-accepted-qty">Qty</th>
+                            <th className="text-center col-negotiation">Neg</th>
                           </React.Fragment>
                         ))}
                       </tr>
@@ -2742,29 +2916,27 @@ const RFQDetail = () => {
 
                             return (
                               <React.Fragment key={`${supplier.supplierId}-${item.rfqItemId}`}>
-                                <td className="text-center border-left-thick">
-                                  <div className="d-flex justify-content-center align-items-center">
-                                    <Input
-                                      type="checkbox"
-                                      checked={isSelected}
-                                      onChange={(e) =>
-                                        handleItemSelection(
-                                          supplier.supplierId,
-                                          item.rfqItemId,
-                                          e.target.checked,
-                                        )
-                                      }
-                                      disabled={isDisabled || isItemSelectedFromOtherSupplier}
-                                      style={{ transform: 'scale(1.1)' }}
-                                    />
-                                  </div>
+                                <td className="text-center border-left-thick col-select">
+                                  <Input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={(e) =>
+                                      handleItemSelection(
+                                        supplier.supplierId,
+                                        item.rfqItemId,
+                                        e.target.checked,
+                                      )
+                                    }
+                                    disabled={isDisabled || isItemSelectedFromOtherSupplier}
+                                    style={{ transform: 'scale(0.8)', margin: 0 }}
+                                  />
                                 </td>
-                                <td className={isLowestPrice ? 'lowest-price-cell' : ''}>
-                                  <div className="d-flex align-items-center">
+                                <td className={`col-unit-price ${isLowestPrice ? 'lowest-price-cell' : ''}`}>
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '2px' }}>
                                     {isLowestPrice && (
                                       <FaTrophy
-                                        className="text-success me-1"
-                                        style={{ fontSize: '12px' }}
+                                        className="text-success"
+                                        style={{ fontSize: '8px', flexShrink: 0 }}
                                       />
                                     )}
                                     <Input
@@ -2785,11 +2957,12 @@ const RFQDetail = () => {
                                           ? 'text-success fw-bold'
                                           : ''
                                       }`}
-                                      placeholder="0.00"
+                                      placeholder="0"
+                                      style={{ width: '45px', padding: '2px 3px', fontSize: '0.7rem' }}
                                     />
                                   </div>
                                 </td>
-                                <td>
+                                <td className="col-accepted-qty">
                                   <Input
                                     type="number"
                                     min="0"
@@ -2805,14 +2978,16 @@ const RFQDetail = () => {
                                     disabled={isAnySignoffRequested || isRejected}
                                     className="form-control-sm"
                                     placeholder={item.quantity}
+                                    style={{ width: '40px', padding: '2px 4px', fontSize: '0.72rem' }}
                                   />
                                 </td>
-                                <td className="text-center">
+                                <td className="text-center col-negotiation">
                                   <Button
                                     color="outline-primary"
                                     size="sm"
                                     onClick={() => openNegotiationDialog(supplierIndex, itemIndex)}
                                     disabled={isRejected}
+                                    style={{ padding: '1px 4px', fontSize: '0.6rem' }}
                                     title="View negotiation history"
                                   >
                                     <FaHistory />
@@ -2823,14 +2998,18 @@ const RFQDetail = () => {
                           })}
                         </tr>
                       ))}
-                      <tr className="fw-bold bg-light">
-                        <td colSpan="4" className="text-end">
+                      <tr className="fw-bold bg-light total-row">
+                        <td
+                          colSpan="4"
+                          className="text-end total-label-cell"
+                        >
                           {selectedItems.size > 0 ? 'Selected Total:' : 'Grand Total:'}
                         </td>
-                        {memoizedSupplierTotals.map(({ supplierId, total }) => {
+                        {memoizedSupplierTotals.map(({ supplierId, total, convertedTotal, currency }) => {
                           const supplierIndex = suppliersWithDetails.findIndex(
                             (s) => s.supplierId === supplierId,
                           );
+                          const supplierCurrency = currency || 'USD';
                           const selectedFromThisSupplier = Array.from(
                             selectedItems.entries(),
                           ).filter(
@@ -2850,13 +3029,18 @@ const RFQDetail = () => {
                           }, 0);
 
                           const displayTotal = selectedItems.size > 0 ? selectedTotal : total;
+                          const displayConvertedTotal = selectedItems.size > 0
+                            ? convertToCompanyCurrency(selectedTotal, supplierCurrency)
+                            : convertedTotal;
+
+                          // Compare using CONVERTED totals for fair comparison
                           const isLowest =
-                            selectedItems.size === 0 && total === lowestTotal && total > 0;
+                            selectedItems.size === 0 && convertedTotal === lowestTotal && convertedTotal > 0;
 
                           return (
                             <React.Fragment key={`total-${supplierId}`}>
-                              <td></td>
-                              <td className="text-center">
+                              <td className="col-select"></td>
+                              <td colSpan="3" className="text-center" style={{ whiteSpace: 'nowrap' }}>
                                 <span
                                   className={`fw-bold ${
                                     isLowest
@@ -2865,14 +3049,22 @@ const RFQDetail = () => {
                                       ? 'text-primary'
                                       : 'text-dark'
                                   }`}
+                                  style={{ fontSize: '0.7rem' }}
                                 >
-                                  ${displayTotal.toFixed(2)}
+                                  {supplierCurrency !== companyCurrency && displayTotal > 0
+                                    ? formatDualCurrency({
+                                        originalPrice: displayTotal,
+                                        originalCurrency: supplierCurrency,
+                                        convertedPrice: displayConvertedTotal,
+                                        convertedCurrency: companyCurrency,
+                                      }, 'supplier')
+                                    : formatCurrency(displayTotal, supplierCurrency)
+                                  }
                                   {isLowest && (
-                                    <small className="text-success d-block">Lowest</small>
+                                    <small className="text-success d-block" style={{ fontSize: '0.6rem' }}>Lowest</small>
                                   )}
                                 </span>
                               </td>
-                              <td colSpan="2"></td>
                             </React.Fragment>
                           );
                         })}
@@ -3119,7 +3311,7 @@ const RFQDetail = () => {
                         <div className="mt-2 text-muted">Loading negotiation history...</div>
                       </div>
                     ) : (
-                      renderNegotiationHistory(responseItem?.negotiationHistory)
+                      renderNegotiationHistory(responseItem?.negotiationHistory, supplier?.supplierCurrency || 'USD')
                     )}
                   </div>
                 </>
@@ -3242,6 +3434,11 @@ const RFQDetail = () => {
                       );
                       const unitPrice = parseFloat(responseItem?.unitPrice || 0);
                       const quantity = parseFloat(responseItem?.quantity || item?.quantity || 0);
+                      const supplier = suppliersWithDetails.find((s) => s.supplierId === supplierId);
+                      const supplierCurrency = supplier?.supplierCurrency || 'USD';
+                      const convertedUnitPrice = convertToCompanyCurrency(unitPrice, supplierCurrency);
+                      const lineTotal = unitPrice * quantity;
+                      const convertedLineTotal = convertToCompanyCurrency(lineTotal, supplierCurrency);
 
                       return (
                         <tr key={itemId}>
@@ -3263,14 +3460,30 @@ const RFQDetail = () => {
                           </td>
                           <td style={{ whiteSpace: 'nowrap' }}>{getSupplierName(supplierId)}</td>
                           <td className="text-end" style={{ whiteSpace: 'nowrap' }}>
-                            ${unitPrice.toFixed(2)}
+                            {supplierCurrency !== companyCurrency
+                              ? formatDualCurrency({
+                                  originalPrice: unitPrice,
+                                  originalCurrency: supplierCurrency,
+                                  convertedPrice: convertedUnitPrice,
+                                  convertedCurrency: companyCurrency,
+                                }, 'company')
+                              : formatCurrency(unitPrice, supplierCurrency)
+                            }
                           </td>
                           <td className="text-center">{quantity}</td>
                           <td
                             className="text-end"
                             style={{ fontWeight: '500', whiteSpace: 'nowrap' }}
                           >
-                            ${(unitPrice * quantity).toFixed(2)}
+                            {supplierCurrency !== companyCurrency
+                              ? formatDualCurrency({
+                                  originalPrice: lineTotal,
+                                  originalCurrency: supplierCurrency,
+                                  convertedPrice: convertedLineTotal,
+                                  convertedCurrency: companyCurrency,
+                                }, 'company')
+                              : formatCurrency(lineTotal, supplierCurrency)
+                            }
                           </td>
                         </tr>
                       );
@@ -3284,7 +3497,15 @@ const RFQDetail = () => {
               >
                 <span style={{ fontWeight: '600', color: '#333' }}>Total Value</span>
                 <span style={{ fontWeight: '700', fontSize: '15px', color: '#333' }}>
-                  ${totalValue.toFixed(2)}
+                  {totalValueData.isSingleCurrency && totalValueData.originalCurrency !== companyCurrency
+                    ? formatDualCurrency({
+                        originalPrice: totalValueData.originalTotal,
+                        originalCurrency: totalValueData.originalCurrency,
+                        convertedPrice: totalValueData.convertedTotal,
+                        convertedCurrency: companyCurrency,
+                      }, 'company')
+                    : formatCurrency(totalValueData.convertedTotal, companyCurrency)
+                  }
                 </span>
               </div>
             </div>
@@ -3496,7 +3717,21 @@ const RFQDetail = () => {
                           </a>
                         </td>
                         <td>{po.supplier?.name || 'Unknown Supplier'}</td>
-                        <td>${po.orderTotal?.toFixed(2) || '0.00'}</td>
+                        <td>
+                          {(() => {
+                            const poCurrency = po.currencyCode || po.supplier?.currency || 'USD';
+                            const orderTotal = po.orderTotal || 0;
+                            const convertedTotal = po.convertedOrderAmount || convertToCompanyCurrency(orderTotal, poCurrency);
+                            return poCurrency !== companyCurrency && orderTotal > 0
+                              ? formatDualCurrency({
+                                  originalPrice: orderTotal,
+                                  originalCurrency: poCurrency,
+                                  convertedPrice: convertedTotal,
+                                  convertedCurrency: companyCurrency,
+                                }, 'company')
+                              : formatCurrency(orderTotal, poCurrency);
+                          })()}
+                        </td>
                         <td>
                           <Badge
                             color={

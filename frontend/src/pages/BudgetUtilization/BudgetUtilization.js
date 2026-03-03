@@ -107,35 +107,41 @@ const BudgetUtilization = () => {
 
   const renderTransactionName = (transaction) => {
     const link = getTransactionLink(transaction);
-    
+
+    // For cart transactions, show cart number instead of cart name
+    const isCartTransaction = transaction.transactionType === 'CART_CREATED' || transaction.transactionType === 'CART_UPDATED';
+    const displayName = isCartTransaction
+      ? (transaction.cartNo ? `Cart: ${transaction.cartNo}` : transaction.transactionName)
+      : transaction.transactionName;
+
     if (link) {
       return (
         <div>
-          <a 
-            href={link} 
+          <a
+            href={link}
             className="text-decoration-none fw-bold text-primary"
-            target="_blank" 
+            target="_blank"
             rel="noopener noreferrer"
           >
-            {transaction.transactionName}
+            {displayName}
           </a>
-          {transaction.cartName && (
-            <div className="small text-muted">Cart: {transaction.cartName}</div>
+          {isCartTransaction && transaction.cartName && (
+            <div className="small text-muted">{transaction.cartName}</div>
           )}
-          {transaction.orderNo && (
+          {transaction.orderNo && !isCartTransaction && (
             <div className="small text-muted">Order: {transaction.orderNo}</div>
           )}
         </div>
       );
     }
-    
+
     return (
       <div>
-        <strong>{transaction.transactionName}</strong>
-        {transaction.cartName && (
-          <div className="small text-muted">Cart: {transaction.cartName}</div>
+        <strong>{displayName}</strong>
+        {isCartTransaction && transaction.cartName && (
+          <div className="small text-muted">{transaction.cartName}</div>
         )}
-        {transaction.orderNo && (
+        {transaction.orderNo && !isCartTransaction && (
           <div className="small text-muted">Order: {transaction.orderNo}</div>
         )}
       </div>
@@ -214,7 +220,7 @@ const BudgetUtilization = () => {
                     Total Budget
                   </div>
                   <div className="h5 mb-0 font-weight-bold">
-                    {formatCurrency(utilizationData?.allocatedAmount || 0, 'USD')}
+                    {formatCurrency(utilizationData?.allocatedAmount || 0)}
                   </div>
                 </div>
                 <Badge color={getUtilizationColor(utilizationPercentage)}>
@@ -232,13 +238,13 @@ const BudgetUtilization = () => {
                 Consumed (Orders)
               </div>
               <div className="h5 mb-0 font-weight-bold text-success">
-                {formatCurrency(utilizationData?.utilizedAmount || 0, 'USD')}
+                {formatCurrency(utilizationData?.utilizedAmount || 0)}
               </div>
               <div className="text-muted small">
                 {utilizationPercentage.toFixed(1)}% of budget
               </div>
               <div className="text-info small mt-1">
-                Pending: {formatCurrency(utilizationData?.cartAmount || 0, 'USD')}
+                Pending: {formatCurrency(utilizationData?.cartAmount || 0)}
               </div>
             </CardBody>
           </Card>
@@ -251,7 +257,7 @@ const BudgetUtilization = () => {
                 Remaining
               </div>
               <div className="h5 mb-0 font-weight-bold">
-                {formatCurrency(remainingAmount, 'USD')}
+                {formatCurrency(remainingAmount)}
               </div>
               <div className="mt-2">
                 <Progress 
@@ -299,7 +305,7 @@ const BudgetUtilization = () => {
                   />
                   <YAxis 
                     yAxisId="left"
-                    tickFormatter={(value) => formatCurrency(value, 'USD')}
+                    tickFormatter={(value) => formatCurrency(value)}
                   />
                   <YAxis 
                     yAxisId="right"
@@ -308,10 +314,10 @@ const BudgetUtilization = () => {
                   />
                   <Tooltip 
                     formatter={(value, name) => {
-                      if (name === 'cumulativeUtilization') return [formatCurrency(value, 'USD'), 'Cumulative Consumed (Orders)'];
+                      if (name === 'cumulativeUtilization') return [formatCurrency(value), 'Cumulative Consumed (Orders)'];
                       if (name === 'utilizationPercentage') return [`${value}%`, 'Utilization %'];
-                      if (name === 'cartAmount') return [formatCurrency(value, 'USD'), 'Pending Requisitions'];
-                      if (name === 'orderAmount') return [formatCurrency(value, 'USD'), 'Order Amount'];
+                      if (name === 'cartAmount') return [formatCurrency(value), 'Pending Requisitions'];
+                      if (name === 'orderAmount') return [formatCurrency(value), 'Order Amount'];
                       return [value, name];
                     }}
                     labelFormatter={(label) => `Date: ${new Date(label).toLocaleString()}`}
@@ -325,7 +331,7 @@ const BudgetUtilization = () => {
                                 {entry.name === 'cumulativeUtilization' ? 'Cumulative Consumed (Orders): ' : 
                                  entry.name === 'utilizationPercentage' ? 'Utilization %: ' : `${entry.name}: `}
                                 <span className="fw-bold">
-                                  {entry.name === 'utilizationPercentage' ? `${entry.value}%` : formatCurrency(entry.value, 'USD')}
+                                  {entry.name === 'utilizationPercentage' ? `${entry.value}%` : formatCurrency(entry.value)}
                                 </span>
                               </p>
                             ))}
@@ -403,13 +409,13 @@ const BudgetUtilization = () => {
                             {renderTransactionName(transaction)}
                           </td>
                           <td>
-                            {transaction.cartAmount > 0 ? formatCurrency(transaction.cartAmount, 'USD') : '-'}
+                            {transaction.cartAmount > 0 ? formatCurrency(transaction.cartAmount) : '-'}
                           </td>
                           <td>
-                            {transaction.orderAmount > 0 ? formatCurrency(transaction.orderAmount, 'USD') : '-'}
+                            {transaction.orderAmount > 0 ? formatCurrency(transaction.orderAmount) : '-'}
                           </td>
                           <td>
-                            <strong>{formatCurrency(transaction.cumulativeUtilization, 'USD')}</strong>
+                            <strong>{formatCurrency(transaction.cumulativeUtilization)}</strong>
                           </td>
                           <td>
                             <Badge color={getUtilizationColor(transaction.utilizationPercentage)}>
@@ -417,7 +423,12 @@ const BudgetUtilization = () => {
                             </Badge>
                           </td>
                           <td>
-                            <small>{transaction.userName}</small>
+                            <div>
+                              <small className="fw-bold">{transaction.userName}</small>
+                              {transaction.userEmail && (
+                                <div className="small text-muted">{transaction.userEmail}</div>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -485,7 +496,7 @@ const BudgetUtilization = () => {
                             <small className="text-muted">
                               {historyItem.changeType === 'CREATE' ? '-' :
                                historyItem.fieldChanged === 'budgetAmount' ? 
-                                 formatCurrency(historyItem.oldBudgetAmount, 'USD') :
+                                 formatCurrency(historyItem.oldBudgetAmount) :
                                historyItem.fieldChanged === 'periodStartDate' ? 
                                  (historyItem.oldPeriodStartDate ? formatDate(historyItem.oldPeriodStartDate) : '-') :
                                historyItem.fieldChanged === 'periodEndDate' ? 
@@ -496,7 +507,7 @@ const BudgetUtilization = () => {
                           <td>
                             <small className="fw-bold text-primary">
                               {historyItem.fieldChanged === 'budgetAmount' ? 
-                                 formatCurrency(historyItem.newBudgetAmount, 'USD') :
+                                 formatCurrency(historyItem.newBudgetAmount) :
                                historyItem.fieldChanged === 'periodStartDate' ? 
                                  (historyItem.newPeriodStartDate ? formatDate(historyItem.newPeriodStartDate) : '-') :
                                historyItem.fieldChanged === 'periodEndDate' ? 

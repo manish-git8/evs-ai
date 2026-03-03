@@ -133,6 +133,8 @@ export const filterAdminSidebar = () => {
           'Supplier Management',
           'User Management',
           'Subscription Management',
+          'Plan Management',
+          'Invoice Management',
         ].includes(child.title),
       ),
     )
@@ -146,6 +148,8 @@ export const filterAdminSidebar = () => {
     'Supplier Management',
     'User Management',
     'Subscription Management',
+    'Plan Management',
+    'Invoice Management',
   ];
 
   flattenedChildren.sort((a, b) => order.indexOf(a.title) - order.indexOf(b.title));

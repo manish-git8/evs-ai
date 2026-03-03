@@ -8,11 +8,14 @@ import 'react-toastify/dist/ReactToastify.css';
 import { FaSort } from 'react-icons/fa';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import InvoiceService from '../../services/InvoiceService';
-import { formatDate, getEntityId } from '../localStorageUtil';
+import { formatDate, getEntityId, formatCurrency, getCompanyCurrency } from '../localStorageUtil';
+import { formatDualCurrency, getExchangeRate, getUserType } from '../../utils/currencyUtils';
 
 const CompanyInvoice = () => {
   const companyId = getEntityId();
   const navigate = useNavigate();
+  const companyCurrency = getCompanyCurrency();
+  const userType = getUserType();
   const [invoices, setInvoices] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -25,6 +28,7 @@ const CompanyInvoice = () => {
   const [isDeleting, setIsDeleting] = useState(false);
   const [sortBy, setSortBy] = useState('createdDate');
   const [sortOrder, setSortOrder] = useState('desc');
+  const [exchangeRates, setExchangeRates] = useState({});
   const pageSize = 10;
 
   const fetchInvoices = async (pageNumber = 0) => {
@@ -110,6 +114,52 @@ const CompanyInvoice = () => {
     }, 500);
     return () => clearTimeout(timer);
   }, [searchTerm]);
+
+  // Fetch exchange rates for supplier currencies
+  useEffect(() => {
+    const fetchRates = async () => {
+      const currencyPairs = new Map();
+      invoices.forEach((inv) => {
+        const supplierCurrency = inv.fullInvoiceData?.supplier?.currency;
+        if (supplierCurrency && supplierCurrency !== companyCurrency) {
+          currencyPairs.set(`${supplierCurrency}-${companyCurrency}`, { from: supplierCurrency, to: companyCurrency });
+        }
+      });
+
+      const newRates = { ...exchangeRates };
+      for (const [key, { from, to }] of currencyPairs) {
+        if (!newRates[key]) {
+          try {
+            const rate = await getExchangeRate(from, to);
+            newRates[key] = rate;
+          } catch (error) {
+            console.error(`Error fetching rate for ${key}:`, error);
+            newRates[key] = 1;
+          }
+        }
+      }
+      setExchangeRates(newRates);
+    };
+    if (invoices.length > 0) {
+      fetchRates();
+    }
+  }, [invoices, companyCurrency]);
+
+  // Format invoice amount with dual currency display
+  const formatInvoiceAmount = (amount, supplierCurrency) => {
+    if (!supplierCurrency || supplierCurrency === companyCurrency || !amount) {
+      return formatCurrency(amount, companyCurrency);
+    }
+    const rateKey = `${supplierCurrency}-${companyCurrency}`;
+    const rate = exchangeRates[rateKey] || 1;
+    const convertedAmount = amount * rate;
+    return formatDualCurrency({
+      originalPrice: amount,
+      originalCurrency: supplierCurrency,
+      convertedPrice: convertedAmount,
+      convertedCurrency: companyCurrency,
+    }, userType);
+  };
 
   const getSupplierName = (invoice) => {
   if (invoice.fullInvoiceData?.supplier) {
@@ -417,8 +467,11 @@ const CompanyInvoice = () => {
                       dataField="invoiceAmount"
                       dataAlign="right"
                       headerAlign="right"
-                      dataFormat={(cell) => `$${parseFloat(cell || 0).toFixed(2)}`}
-                      width="10%"
+                      dataFormat={(cell, row) => {
+                        const supplierCurrency = row.fullInvoiceData?.supplier?.currency;
+                        return formatInvoiceAmount(parseFloat(cell || 0), supplierCurrency);
+                      }}
+                      width="12%"
                       thStyle={{
                         textAlign: 'right',
                         whiteSpace: 'normal',
@@ -427,7 +480,7 @@ const CompanyInvoice = () => {
                       }}
                       tdStyle={{
                         textAlign: 'right',
-                        whiteSpace: 'normal',
+                        whiteSpace: 'nowrap',
                         padding: '8px',
                         fontWeight: '600',
                       }}
@@ -600,7 +653,7 @@ const CompanyInvoice = () => {
               <strong>Invoice Details:</strong>
               <div className="mt-2">
                 <small className="text-muted">Invoice No:</small> <strong>{invoiceToDelete.invoiceNumber}</strong><br/>
-                <small className="text-muted">Amount:</small> <strong>${parseFloat(invoiceToDelete.invoiceAmount || 0).toFixed(2)}</strong><br/>
+                <small className="text-muted">Amount:</small> <strong>{formatInvoiceAmount(parseFloat(invoiceToDelete.invoiceAmount || 0), invoiceToDelete.fullInvoiceData?.supplier?.currency)}</strong><br/>
                 <small className="text-muted">Supplier:</small> <strong>{getSupplierName(invoiceToDelete)}</strong>
               </div>
             </div>

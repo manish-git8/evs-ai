@@ -8,7 +8,7 @@ import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import GrnService from '../../services/GrnService';
 import FileUploadService from '../../services/FileUploadService';
 import ReceiptService from '../../services/RecieptService';
-import { getEntityId } from '../localStorageUtil';
+import { getEntityId, formatCurrency } from '../localStorageUtil';
 import '../CompanyManagement/ReactBootstrapTable.scss';
 
 const GrnDetails = () => {
@@ -693,7 +693,7 @@ const GrnDetails = () => {
                                 </td>
                                 <td style={{ padding: '6px 8px', color: '#495057' }}>
                                   {grnDetail.unitPrice != null
-                                    ? `$${grnDetail.unitPrice.toFixed(2)}`
+                                    ? formatCurrency(grnDetail.unitPrice)
                                     : '-'}
                                 </td>
                               </tr>

@@ -50,7 +50,7 @@ import RfqService from '../../services/RfqService';
 import UserApprovalPathService from '../../services/UserApprovalPathService';
 import FileUploadService from '../../services/FileUploadService';
 import apiClient from '../../api/apiClient';
-import { getUserRole, getEntityId, formatDate } from '../localStorageUtil';
+import { getUserRole, getEntityId, formatDate, formatCurrency, getCurrencySymbol, getCompanyCurrency } from '../localStorageUtil';
 import '../CompanyManagement/ReactBootstrapTable.scss';
 
 const UserDetails = () => {
@@ -924,14 +924,6 @@ const UserDetails = () => {
     paginationPosition: 'bottom',
   };
 
-  const formatCurrency = (amount, currency = 'USD') => {
-    if (!amount && amount !== 0) return 'N/A';
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency,
-      minimumFractionDigits: 2,
-    }).format(amount);
-  };
 
   const renderStatusBadge = (status) => {
     const statusColors = {
@@ -1959,7 +1951,7 @@ const UserDetails = () => {
                 </p>
                 <div className="mt-auto">
                   <InputGroup>
-                    <InputGroupText>$</InputGroupText>
+                    <InputGroupText>{getCurrencySymbol(getCompanyCurrency())}</InputGroupText>
                     <Input
                       type="number"
                       placeholder="Enter approval limit"
@@ -2689,7 +2681,7 @@ const UserDetails = () => {
                 <strong>Approval Limit</strong>
               </Label>
               <InputGroup>
-                <InputGroupText>$</InputGroupText>
+                <InputGroupText>{getCurrencySymbol(getCompanyCurrency())}</InputGroupText>
                 <Input
                   type="number"
                   id="approverLimitInput"

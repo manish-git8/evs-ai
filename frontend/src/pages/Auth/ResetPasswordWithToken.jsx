@@ -124,9 +124,11 @@ const ResetPasswordWithToken = () => {
       setResetSuccess(true);
       toast.success('Password reset successful! You can now login with your new password.');
     } catch (error) {
-      const errorMsg = error.response?.data?.errorMessage ||
-                       error.response?.data?.message ||
+      // After apiClient.formatError: error.data contains response data, error.message contains the message
+      const errorMsg = error?.data?.errorMessage ||
+                       error?.message ||
                        'Failed to reset password. The link may have expired.';
+      toast.dismiss();
       toast.error(errorMsg);
     } finally {
       setSubmitting(false);

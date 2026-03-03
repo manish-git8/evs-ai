@@ -10,6 +10,7 @@ import '../CompanyManagement/ReactBootstrapTable.scss';
 import ComponentCard from '../../components/ComponentCard';
 import CatalogItemService from '../../services/CatalogItemService';
 import { getEntityId, pageSize } from '../localStorageUtil';
+import { formatCurrency } from '../../utils/currencyUtils';
 
 const CatalogItemManagement = () => {
   const navigate = useNavigate();
@@ -143,17 +144,6 @@ const CatalogItemManagement = () => {
       console.error('Error deleting catalog item:', error);
       Swal.fire('Error!', 'There was an issue deleting the item.', 'error');
     }
-  };
-
-  const currencySymbols = {
-    USD: '$',
-    EUR: '€',
-    GBP: '£',
-    INR: '₹',
-    JPY: '¥',
-    AUD: 'A$',
-    CAD: 'C$',
-    IND: '₹',
   };
 
   const options = {
@@ -302,10 +292,7 @@ const CatalogItemManagement = () => {
                   dataField="UnitPrice"
                   dataAlign="left"
                   headerAlign="left"
-                  dataFormat={(cell, row) => {
-                    const symbol = currencySymbols[row.Currency] || row.Currency;
-                    return `${symbol}${row.UnitPrice.toFixed(2)}`;
-                  }}
+                  dataFormat={(cell, row) => formatCurrency(cell || 0, row?.Currency || 'USD')}
                   thStyle={{ cursor: 'pointer' }}
                 >
                   <div

@@ -1,18 +1,79 @@
 // Billing Module Styles
 
+// Global modal styles - modals render as portals outside containers
+// so these need to be at root level
+.modal {
+  .badge {
+    // Ensure white text on colored badges
+    &.bg-success,
+    &.bg-primary,
+    &.bg-danger,
+    &.bg-warning,
+    &.bg-info,
+    &.bg-dark,
+    &.bg-secondary,
+    &.badge-success,
+    &.badge-primary,
+    &.badge-danger,
+    &.badge-warning,
+    &.badge-info,
+    &.badge-dark,
+    &.badge-secondary {
+      color: white !important;
+
+      * {
+        color: white !important;
+      }
+    }
+
+    &.bg-light,
+    &.badge-light {
+      color: #495057 !important;
+    }
+  }
+
+  .btn {
+    &.btn-primary,
+    &.btn-success,
+    &.btn-danger,
+    &.btn-warning,
+    &.btn-info,
+    &.btn-dark,
+    &.btn-secondary {
+      color: white !important;
+
+      * {
+        color: white !important;
+      }
+    }
+  }
+
+  // Ensure modal body text is readable
+  .modal-body {
+    color: #495057;
+
+    .text-muted {
+      color: #6c757d !important;
+    }
+  }
+}
+
 // Common styles
 .billing-plans-container,
 .billing-dashboard-container,
 .billing-invoices-container,
-.admin-subscription-management-container {
+.admin-subscription-management-container,
+.subscription-mgmt-container,
+.invoice-mgmt-container,
+.plan-management-container {
   padding: 0.75rem 0.5rem;
   color: #495057 !important;
   background-color: transparent !important;
   font-size: 12px !important;
 
-  // Force color on all child elements
-  * {
-    color: #495057 !important;
+  // Force color on all child elements (except colored components)
+  *:not(.badge):not(.btn):not(.alert):not(.bg-primary):not(.bg-success):not(.bg-danger):not(.bg-warning):not(.bg-info):not(.bg-dark):not(.bg-secondary) {
+    color: #495057;
   }
 
   // Preserve utility color classes
@@ -40,8 +101,13 @@
     color: #009efb !important;
   }
 
-  // Badge color overrides - ensure proper contrast
+  .text-white {
+    color: white !important;
+  }
+
+  // Badge color overrides - ensure white text on colored backgrounds
   .badge {
+    // Bootstrap 5 bg-* classes
     &.bg-success,
     &.bg-primary,
     &.bg-danger,
@@ -50,10 +116,44 @@
     &.bg-dark,
     &.bg-secondary {
       color: white !important;
+
+      * {
+        color: white !important;
+      }
     }
 
-    &.bg-light {
+    // Reactstrap badge-* classes (from color prop)
+    &.badge-success,
+    &.badge-primary,
+    &.badge-danger,
+    &.badge-warning,
+    &.badge-info,
+    &.badge-dark,
+    &.badge-secondary {
+      color: white !important;
+
+      * {
+        color: white !important;
+      }
+    }
+
+    &.bg-light,
+    &.badge-light {
       color: #495057 !important;
+    }
+  }
+
+  // Alert color overrides - ensure proper text on colored alerts
+  .alert {
+    &.alert-primary,
+    &.alert-success,
+    &.alert-danger,
+    &.alert-warning,
+    &.alert-info,
+    &.alert-dark {
+      * {
+        color: inherit !important;
+      }
     }
   }
 
@@ -69,7 +169,7 @@
     &.btn-secondary {
       color: white !important;
 
-      i {
+      * {
         color: white !important;
       }
     }
@@ -230,8 +330,22 @@
     background-color: #fff !important;
     color: #495057 !important;
 
-    * {
-      color: #495057 !important;
+    // Default text color (but don't override colored elements)
+    *:not(.badge):not(.btn):not(.alert):not(.bg-primary):not(.bg-success):not(.bg-danger):not(.bg-warning):not(.bg-info):not(.bg-dark):not(.bg-secondary) {
+      color: #495057;
+    }
+
+    // White text on colored backgrounds
+    .badge, .btn {
+      &.bg-primary, &.bg-success, &.bg-danger, &.bg-warning, &.bg-info, &.bg-dark, &.bg-secondary,
+      &.badge-primary, &.badge-success, &.badge-danger, &.badge-warning, &.badge-info, &.badge-dark, &.badge-secondary,
+      &.btn-primary, &.btn-success, &.btn-danger, &.btn-warning, &.btn-info, &.btn-dark, &.btn-secondary {
+        color: white !important;
+
+        * {
+          color: white !important;
+        }
+      }
     }
 
     .text-muted {
@@ -257,6 +371,10 @@
     .text-primary {
       color: #009efb !important;
     }
+
+    .text-white {
+      color: white !important;
+    }
   }
 
   .card-title {
@@ -268,12 +386,26 @@
     color: #495057 !important;
     font-size: 12px !important;
 
-    * {
-      color: #495057 !important;
+    *:not(.badge):not(.btn):not(.alert) {
+      color: #495057;
+    }
+
+    // White text on colored badges/buttons
+    .badge, .btn {
+      &.bg-primary, &.bg-success, &.bg-danger, &.bg-warning, &.bg-info, &.bg-dark, &.bg-secondary,
+      &.badge-primary, &.badge-success, &.badge-danger, &.badge-warning, &.badge-info, &.badge-dark, &.badge-secondary,
+      &.btn-primary, &.btn-success, &.btn-danger, &.btn-warning, &.btn-info, &.btn-dark, &.btn-secondary {
+        color: white !important;
+        * { color: white !important; }
+      }
     }
 
     .text-muted {
       color: #6c757d !important;
+    }
+
+    .text-white {
+      color: white !important;
     }
   }
 
@@ -283,10 +415,28 @@
     font-size: 12px !important;
   }
 
-  table th,
   table td {
     color: #495057 !important;
     font-size: 12px !important;
+  }
+
+  // Table headers - ensure proper styling
+  table thead {
+    th {
+      font-size: 12px !important;
+      font-weight: 600 !important;
+      color: #64748b !important; // Slate gray for light backgrounds
+      background-color: #f8fafc !important;
+      border-bottom: 2px solid #e2e8f0 !important;
+    }
+
+    // For tables with primary/blue header backgrounds
+    &.bg-primary th,
+    &.table-primary th,
+    th.bg-primary {
+      color: white !important;
+      background-color: #009efb !important;
+    }
   }
 
   .react-bs-table {
@@ -299,7 +449,12 @@
     font-size: 12px !important;
   }
 
-  .react-bs-table th,
+  .react-bs-table th {
+    color: #64748b !important;
+    font-size: 12px !important;
+    background-color: #f8fafc !important;
+  }
+
   .react-bs-table td {
     color: #495057 !important;
     font-size: 12px !important;
@@ -562,13 +717,139 @@
 .subscription-overview-card,
 .costs-card,
 .usage-card,
-.recent-invoices-card {
+.recent-invoices-card,
+.plan-inclusions-card,
+.features-usage-card {
   border: none;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   transition: all 0.3s ease;
 
   &:hover {
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  }
+}
+
+// Unified Features & Usage Card
+.features-usage-card {
+  .feature-card {
+    transition: all 0.2s ease;
+    background: #fff;
+
+    &:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    }
+
+    &.border-warning {
+      border-color: #ffc107 !important;
+      background: linear-gradient(180deg, #fffbeb 0%, #fff 50%);
+    }
+
+    &.border-danger {
+      border-color: #dc3545 !important;
+      background: linear-gradient(180deg, #fef2f2 0%, #fff 50%);
+    }
+
+    .progress {
+      border-radius: 4px;
+    }
+  }
+}
+
+// Compact subscription overview
+.subscription-overview-card {
+  .plan-icon {
+    flex-shrink: 0;
+  }
+
+  .cost-summary {
+    min-width: 140px;
+    border-color: #e2e8f0 !important;
+    background: #fff;
+  }
+
+  // Trial banner inside card
+  .trial-banner {
+    border-left: 3px solid;
+
+    &.bg-warning {
+      border-left-color: #ffc107;
+    }
+
+    &.bg-info {
+      border-left-color: #17a2b8;
+    }
+  }
+}
+
+// Invoice summary clean style
+.invoice-summary {
+  border-color: #e2e8f0 !important;
+  background: #fff;
+}
+
+// Compact card spacing for billing dashboard
+.billing-dashboard-container {
+  .card {
+    margin-bottom: 0.5rem !important;
+  }
+
+  .mb-2 {
+    margin-bottom: 0.5rem !important;
+  }
+
+  .mb-3 {
+    margin-bottom: 0.75rem !important;
+  }
+
+  .mb-4 {
+    margin-bottom: 0.75rem !important;
+  }
+
+  // Tighter padding for cards
+  .card-body {
+    padding: 0.75rem !important;
+  }
+
+  // Feature cards - smaller padding
+  .feature-card {
+    padding: 0.5rem !important;
+  }
+}
+
+// Plan Inclusions Card
+.plan-inclusions-card {
+  .inclusion-item {
+    transition: all 0.2s ease;
+    background: #fff;
+
+    &:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    }
+
+    .inclusion-icon {
+      width: 40px;
+      height: 40px;
+      flex-shrink: 0;
+    }
+
+    .inclusion-details {
+      p {
+        margin-bottom: 0;
+      }
+    }
+  }
+}
+
+// Cost Breakdown Card
+.cost-breakdown {
+  .border-bottom {
+    border-color: #e9ecef !important;
+  }
+
+  .fw-medium {
+    font-weight: 500;
   }
 }
 
@@ -800,3 +1081,1725 @@
 }
 
 // Dark mode support removed - not applicable for this application
+
+// ==================== Plan Management - Clean & Professional ====================
+
+.plan-management-container {
+  padding: 1rem;
+
+  h5 {
+    color: #1e293b;
+    font-size: 1.1rem;
+  }
+
+  // Stat cards - compact design
+  .stat-card {
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    transition: box-shadow 0.2s ease;
+
+    &:hover {
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    .stat-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1rem;
+
+      i {
+        color: inherit !important;
+      }
+    }
+
+    .stat-value {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #1e293b !important;
+      line-height: 1.2;
+    }
+
+    .stat-label {
+      font-size: 0.7rem;
+      color: #64748b !important;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+  }
+
+  // Bootstrap color utilities
+  .bg-primary-subtle { background-color: rgba(0, 158, 251, 0.1); }
+  .bg-success-subtle { background-color: rgba(57, 196, 73, 0.1); }
+  .bg-info-subtle { background-color: rgba(96, 77, 207, 0.1); }
+  .bg-warning-subtle { background-color: rgba(255, 188, 52, 0.1); }
+
+  .text-primary { color: #009efb !important; }
+  .text-success { color: #39c449 !important; }
+  .text-info { color: #604dcf !important; }
+  .text-warning { color: #ffbc34 !important; }
+
+  // Plan table
+  .plan-table {
+    font-size: 0.85rem;
+
+    thead {
+      background: #f8fafc !important;
+
+      th {
+        font-weight: 600 !important;
+        color: #64748b !important;
+        font-size: 0.75rem !important;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        padding: 0.75rem;
+        border-bottom: 2px solid #e2e8f0 !important;
+        white-space: nowrap;
+        background: #f8fafc !important;
+      }
+    }
+
+    tbody {
+      tr {
+        transition: background-color 0.15s ease;
+
+        &:hover {
+          background-color: #f8fafc;
+        }
+      }
+
+      td {
+        padding: 0.75rem;
+        vertical-align: middle;
+        border-bottom: 1px solid #f1f5f9;
+        color: #334155;
+      }
+    }
+
+    .plan-icon-sm {
+      width: 32px;
+      height: 32px;
+      background: linear-gradient(135deg, #009efb, #0079c9);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white !important;
+
+      i {
+        color: white !important;
+        font-size: 0.9rem;
+      }
+    }
+
+    .fw-medium {
+      font-weight: 500;
+      color: #1e293b;
+    }
+
+    .badge {
+      font-size: 0.7rem;
+      font-weight: 500;
+    }
+  }
+
+  // Compact plan cards
+  .plan-card-compact {
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border-radius: 10px;
+
+    &:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+
+    h6 {
+      color: #1e293b;
+      font-size: 0.95rem;
+    }
+
+    .pricing-row {
+      background: #f8fafc;
+      margin: 0 -1rem;
+      padding-left: 1rem;
+      padding-right: 1rem;
+    }
+
+    .fw-bold {
+      font-size: 1rem;
+    }
+  }
+
+  // Input and button styles
+  .input-group-text {
+    border-color: #e2e8f0;
+  }
+
+  .form-control, .form-select {
+    border-color: #e2e8f0;
+    font-size: 0.85rem;
+
+    &:focus {
+      border-color: #009efb;
+      box-shadow: 0 0 0 2px rgba(0, 158, 251, 0.1);
+    }
+  }
+
+  .btn-primary {
+    background: #009efb;
+    border-color: #009efb;
+
+    &:hover {
+      background: #0089e0;
+      border-color: #0089e0;
+    }
+  }
+
+  .btn-outline-primary {
+    color: #009efb;
+    border-color: #009efb;
+
+    &:hover {
+      background: #009efb;
+      color: white;
+    }
+  }
+
+  .btn-outline-secondary {
+    color: #64748b;
+    border-color: #e2e8f0;
+
+    &:hover {
+      background: #f1f5f9;
+      color: #334155;
+      border-color: #e2e8f0;
+    }
+  }
+
+  // Dropdown menu - fix visibility
+  .dropdown-menu {
+    font-size: 0.85rem;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    border-radius: 8px;
+    z-index: 1050;
+    position: absolute;
+
+    .dropdown-item {
+      padding: 0.5rem 1rem;
+      color: #334155;
+
+      i {
+        color: #64748b;
+      }
+
+      &:hover {
+        background: #f8fafc;
+      }
+
+      &.text-danger {
+        color: #f62d51;
+
+        i {
+          color: #f62d51;
+        }
+
+        &:hover {
+          background: #fef2f2;
+        }
+      }
+    }
+  }
+
+  // Fix table overflow for dropdown
+  .card {
+    overflow: visible !important;
+  }
+
+  .table-responsive {
+    overflow: visible !important;
+  }
+
+  table {
+    overflow: visible !important;
+  }
+
+  // Ensure dropdown is positioned correctly and visible
+  .dropdown {
+    position: static;
+  }
+
+  .dropdown-menu {
+    position: absolute !important;
+    z-index: 1050 !important;
+  }
+
+  // Actions column should not clip dropdown
+  td:last-child {
+    position: relative;
+    overflow: visible !important;
+  }
+}
+
+// ==================== Admin Plan Management Styles ====================
+
+.admin-plan-list-container,
+.admin-plan-view-container,
+.admin-plan-form-container {
+  padding: 1.25rem;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  min-height: calc(100vh - 60px);
+
+  .page-header {
+    margin-bottom: 1.75rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid #e2e8f0;
+
+    h2 {
+      font-size: 1.5rem !important;
+      font-weight: 700;
+      color: #1e293b !important;
+      margin-bottom: 0.25rem;
+      letter-spacing: -0.025em;
+
+      i {
+        color: #009efb !important;
+      }
+    }
+
+    .breadcrumb {
+      font-size: 0.875rem;
+
+      .breadcrumb-item {
+        &::before {
+          color: #94a3b8;
+        }
+
+        &.active {
+          color: #64748b;
+        }
+      }
+    }
+  }
+
+  // Stats cards
+  .stats-card {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    border-radius: 12px !important;
+    background: white;
+
+    &:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1) !important;
+    }
+
+    .stats-icon {
+      width: 52px;
+      height: 52px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 12px;
+
+      i {
+        color: inherit !important;
+      }
+    }
+
+    h3 {
+      font-size: 1.75rem !important;
+      font-weight: 800;
+      margin-bottom: 0;
+      color: #1e293b !important;
+      letter-spacing: -0.025em;
+    }
+
+    small {
+      color: #64748b !important;
+      font-weight: 500;
+    }
+  }
+
+  // Card base styles
+  .card {
+    border-radius: 12px !important;
+    border: 1px solid #e2e8f0 !important;
+
+    .card-header {
+      border-radius: 12px 12px 0 0 !important;
+      background: white;
+      border-bottom: 1px solid #e2e8f0;
+    }
+  }
+
+  // Plan card grid
+  .plan-card {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    border-radius: 16px !important;
+    overflow: hidden;
+    background: white;
+    border: 1px solid #e2e8f0 !important;
+
+    &:hover {
+      border-color: #009efb !important;
+      box-shadow: 0 20px 25px -5px rgba(0, 158, 251, 0.1), 0 8px 10px -6px rgba(0, 158, 251, 0.1) !important;
+    }
+
+    .pricing-section {
+      background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+      border-radius: 8px;
+
+      h4 {
+        letter-spacing: -0.025em;
+      }
+    }
+
+    .features-summary {
+      .badge {
+        font-size: 0.7rem !important;
+        padding: 0.35rem 0.5rem;
+        border-radius: 6px;
+      }
+    }
+
+    .card-body {
+      padding: 1.25rem !important;
+    }
+  }
+
+  // Tabs styling
+  .nav-tabs {
+    border-bottom: 2px solid #e2e8f0;
+    gap: 0.5rem;
+
+    .nav-link {
+      border: none;
+      color: #64748b !important;
+      padding: 0.875rem 1.5rem;
+      font-weight: 600;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      border-radius: 8px 8px 0 0;
+      position: relative;
+
+      &:hover {
+        color: #009efb !important;
+        background-color: rgba(0, 158, 251, 0.05);
+      }
+
+      &.active {
+        color: #009efb !important;
+        background-color: rgba(0, 158, 251, 0.08);
+
+        &::after {
+          content: '';
+          position: absolute;
+          bottom: -2px;
+          left: 0;
+          right: 0;
+          height: 3px;
+          background: linear-gradient(90deg, #009efb, #0079c9);
+          border-radius: 3px 3px 0 0;
+        }
+      }
+
+      i {
+        color: inherit !important;
+      }
+
+      .badge {
+        background: linear-gradient(135deg, #009efb, #0079c9);
+        color: white !important;
+        font-weight: 600;
+      }
+    }
+  }
+
+  // Feature config table
+  .feature-config-table {
+    font-size: 0.875rem;
+
+    thead th {
+      background-color: #f8fafc !important;
+      font-weight: 600 !important;
+      color: #64748b !important;
+      white-space: nowrap;
+      padding: 0.75rem;
+      border-bottom: 2px solid #e2e8f0 !important;
+    }
+
+    tbody td {
+      vertical-align: middle;
+      padding: 0.75rem;
+    }
+
+    tr.table-secondary {
+      opacity: 0.7;
+    }
+
+    .feature-icon {
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+  }
+
+  // Plan preview sidebar
+  .plan-preview-icon {
+    box-shadow: 0 4px 12px rgba(0, 158, 251, 0.4);
+  }
+
+  .pricing-preview {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    border-radius: 8px;
+  }
+
+  .features-preview {
+    ul {
+      li {
+        padding: 0.5rem 0;
+        border-bottom: 1px solid #f0f0f0;
+
+        &:last-child {
+          border-bottom: none;
+        }
+      }
+    }
+  }
+
+  // Company avatar
+  .company-avatar {
+    font-weight: 600;
+    font-size: 1rem;
+    color: white !important;
+  }
+
+  // Progress bars
+  .progress {
+    border-radius: 4px;
+    overflow: hidden;
+  }
+}
+
+// View page specific styles
+.admin-plan-view-container {
+  .plan-icon {
+    box-shadow: 0 8px 16px rgba(0, 158, 251, 0.35);
+    background: linear-gradient(135deg, #009efb 0%, #0079c9 100%) !important;
+
+    i {
+      color: white !important;
+    }
+  }
+
+  // Quick stats cards in view
+  .card.border-0.shadow-sm {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    border-radius: 12px !important;
+
+    &:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 16px rgba(0, 0, 0, 0.08) !important;
+    }
+
+    i.bi {
+      opacity: 0.9;
+    }
+  }
+
+  // Feature cards
+  .feature-icon {
+    transition: transform 0.2s ease;
+  }
+
+  // Enrolled companies table
+  .table {
+    thead {
+      background: #f8fafc !important;
+
+      th {
+        font-weight: 600 !important;
+        font-size: 0.8rem !important;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: #64748b !important;
+        border-bottom: 2px solid #e2e8f0 !important;
+        background: #f8fafc !important;
+      }
+    }
+
+    tbody {
+      tr {
+        transition: background-color 0.2s ease;
+
+        &:hover {
+          background-color: rgba(13, 110, 253, 0.03);
+        }
+      }
+
+      td {
+        vertical-align: middle;
+        padding: 1rem 0.75rem;
+      }
+    }
+  }
+}
+
+// Form page specific styles
+.admin-plan-form-container {
+  // Pricing cards
+  .border {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    border-radius: 12px !important;
+
+    &:focus-within {
+      border-color: #009efb !important;
+      box-shadow: 0 0 0 0.25rem rgba(0, 158, 251, 0.15);
+    }
+  }
+
+  // Validation states
+  .is-invalid {
+    border-color: #f62d51 !important;
+
+    &:focus {
+      box-shadow: 0 0 0 0.25rem rgba(246, 45, 81, 0.2);
+    }
+  }
+
+  // Sticky sidebar
+  .sticky-top {
+    z-index: 100;
+  }
+
+  // Preview card
+  .plan-preview-icon {
+    box-shadow: 0 8px 20px rgba(0, 158, 251, 0.4);
+    background: linear-gradient(135deg, #009efb 0%, #0079c9 100%) !important;
+  }
+
+  // Submit button
+  .btn-primary.btn-lg {
+    background: linear-gradient(135deg, #009efb 0%, #0079c9 100%);
+    border: none;
+    font-weight: 600;
+    letter-spacing: 0.025em;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+    &:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 16px rgba(0, 158, 251, 0.35);
+    }
+
+    &:disabled {
+      opacity: 0.7;
+    }
+  }
+}
+
+// Global button enhancements for plan management
+.admin-plan-list-container,
+.admin-plan-view-container,
+.admin-plan-form-container {
+  .btn-primary {
+    background: linear-gradient(135deg, #009efb 0%, #0079c9 100%);
+    border: none;
+    font-weight: 500;
+
+    &:hover:not(:disabled) {
+      background: linear-gradient(135deg, #0089e0 0%, #006db3 100%);
+    }
+
+    i {
+      color: white !important;
+    }
+  }
+
+  .btn-outline-primary {
+    border-color: #009efb;
+    color: #009efb !important;
+
+    &:hover {
+      background: rgba(0, 158, 251, 0.1);
+      border-color: #009efb;
+      color: #009efb !important;
+    }
+
+    i {
+      color: inherit !important;
+    }
+  }
+
+  .btn-outline-danger {
+    &:hover {
+      background: rgba(246, 45, 81, 0.1);
+      color: #f62d51 !important;
+      border-color: #f62d51;
+    }
+  }
+
+  // Search input
+  .input-group {
+    .input-group-text {
+      background: white;
+      border-color: #e2e8f0;
+      color: #94a3b8 !important;
+    }
+
+    .form-control {
+      border-color: #e2e8f0;
+
+      &:focus {
+        border-color: #009efb;
+        box-shadow: 0 0 0 0.2rem rgba(0, 158, 251, 0.1);
+      }
+    }
+  }
+}
+
+// Responsive adjustments for plan management
+@media (max-width: 992px) {
+  .admin-plan-list-container,
+  .admin-plan-view-container,
+  .admin-plan-form-container {
+    padding: 0.75rem;
+
+    .page-header {
+      h2 {
+        font-size: 1.25rem !important;
+      }
+    }
+
+    .stats-card {
+      margin-bottom: 0.5rem;
+
+      h3 {
+        font-size: 1.25rem !important;
+      }
+    }
+  }
+
+  .admin-plan-form-container {
+    .sticky-top {
+      position: relative !important;
+      top: auto !important;
+    }
+  }
+}
+
+@media (max-width: 768px) {
+  .admin-plan-list-container,
+  .admin-plan-view-container,
+  .admin-plan-form-container {
+    .nav-tabs {
+      flex-wrap: nowrap;
+      overflow-x: auto;
+
+      .nav-link {
+        padding: 0.5rem 0.75rem;
+        white-space: nowrap;
+        font-size: 0.875rem;
+      }
+    }
+
+    .feature-config-table {
+      font-size: 0.75rem;
+
+      thead th,
+      tbody td {
+        padding: 0.5rem;
+      }
+    }
+  }
+}
+
+// ==================== Plan View - Compact Professional Layout ====================
+
+.plan-view-container {
+  padding: 1rem;
+  max-width: 100%;
+  overflow-x: hidden;
+
+  h5 {
+    color: #1e293b;
+    font-size: 1.1rem;
+  }
+
+  h6 {
+    color: #1e293b;
+    font-size: 0.9rem;
+  }
+
+  // Prevent content overflow
+  .row {
+    margin-left: 0;
+    margin-right: 0;
+    max-width: 100%;
+  }
+
+  .col, [class*="col-"] {
+    max-width: 100%;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+  }
+
+  // Plan icon in header
+  .plan-icon-sm {
+    width: 36px;
+    height: 36px;
+    background: linear-gradient(135deg, #009efb, #0079c9);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    i {
+      color: white !important;
+      font-size: 1rem;
+    }
+  }
+
+  // Stat cards - compact design (reuse from plan-management)
+  .stat-card {
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    transition: box-shadow 0.2s ease;
+
+    &:hover {
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    .stat-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1rem;
+
+      i {
+        color: inherit !important;
+      }
+    }
+
+    .stat-value {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #1e293b !important;
+      line-height: 1.2;
+    }
+
+    .stat-label {
+      font-size: 0.65rem;
+      color: #64748b !important;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+  }
+
+  // Color utilities
+  .bg-primary-subtle { background-color: rgba(0, 158, 251, 0.1); }
+  .bg-success-subtle { background-color: rgba(57, 196, 73, 0.1); }
+  .bg-info-subtle { background-color: rgba(96, 77, 207, 0.1); }
+  .bg-warning-subtle { background-color: rgba(255, 188, 52, 0.1); }
+
+  .text-primary { color: #009efb !important; }
+  .text-success { color: #39c449 !important; }
+  .text-info { color: #604dcf !important; }
+  .text-warning { color: #ffbc34 !important; }
+
+  // Tab navigation
+  .nav-tabs {
+    border-bottom: 1px solid #e2e8f0;
+
+    .nav-link {
+      border: none;
+      color: #64748b;
+      font-size: 0.85rem;
+      font-weight: 500;
+      border-radius: 0;
+      margin-bottom: -1px;
+
+      &:hover {
+        color: #009efb;
+        border-bottom: 2px solid transparent;
+      }
+
+      &.active {
+        color: #009efb;
+        background: transparent;
+        border-bottom: 2px solid #009efb;
+      }
+
+      i {
+        color: inherit !important;
+      }
+
+      .badge {
+        font-size: 0.65rem;
+        padding: 0.2rem 0.4rem;
+      }
+    }
+  }
+
+  // Detail table in overview
+  .detail-table {
+    font-size: 0.85rem;
+    table-layout: fixed;
+    width: 100%;
+
+    td {
+      padding: 0.4rem 0;
+      vertical-align: top;
+      border: none;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+
+      &:first-child {
+        width: 120px;
+        min-width: 100px;
+        flex-shrink: 0;
+      }
+
+      &:last-child {
+        word-break: break-word;
+      }
+    }
+  }
+
+  // Pricing cards
+  .pricing-card {
+    background: #f8fafc;
+    border-radius: 8px;
+    padding: 0.6rem 0.75rem;
+    border: 1px solid #e2e8f0;
+    overflow: hidden;
+
+    &.monthly {
+      border-left: 3px solid #009efb;
+    }
+
+    &.yearly {
+      border-left: 3px solid #39c449;
+    }
+
+    .price-value {
+      font-size: 1rem;
+    }
+
+    .badge {
+      font-size: 0.6rem;
+      padding: 0.2rem 0.35rem;
+    }
+  }
+
+  // Breakdown card (subscription stats)
+  .breakdown-card {
+    background: #f8fafc;
+    border-radius: 8px;
+    padding: 0.75rem;
+    border: 1px solid #e2e8f0;
+
+    h6 {
+      font-size: 0.8rem;
+    }
+
+    .breakdown-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.25rem 0;
+      font-size: 0.8rem;
+
+      &.total {
+        font-weight: 600;
+      }
+    }
+  }
+
+  // Feature table
+  .feature-table {
+    font-size: 0.85rem;
+
+    thead {
+      background: #f8fafc !important;
+
+      th {
+        font-weight: 600 !important;
+        color: #64748b !important;
+        font-size: 0.75rem !important;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        padding: 0.6rem;
+        border-bottom: 2px solid #e2e8f0 !important;
+        white-space: nowrap;
+        background: #f8fafc !important;
+      }
+    }
+
+    tbody {
+      td {
+        padding: 0.6rem;
+        vertical-align: middle;
+        border-bottom: 1px solid #f1f5f9;
+        color: #334155;
+      }
+
+      tr:hover {
+        background-color: #f8fafc;
+      }
+    }
+
+    .fw-medium {
+      font-weight: 500;
+      color: #1e293b;
+    }
+
+    .badge {
+      font-size: 0.7rem;
+    }
+  }
+
+  // Company table
+  .company-table {
+    font-size: 0.85rem;
+
+    thead {
+      background: #f8fafc !important;
+
+      th {
+        font-weight: 600 !important;
+        color: #64748b !important;
+        font-size: 0.75rem !important;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        padding: 0.6rem;
+        border-bottom: 2px solid #e2e8f0 !important;
+        white-space: nowrap;
+        background: #f8fafc !important;
+      }
+    }
+
+    tbody {
+      td {
+        padding: 0.6rem;
+        vertical-align: middle;
+        border-bottom: 1px solid #f1f5f9;
+        color: #334155;
+      }
+
+      tr:hover {
+        background-color: #f8fafc;
+      }
+    }
+
+    .company-avatar {
+      width: 32px;
+      height: 32px;
+      background: linear-gradient(135deg, #009efb, #0079c9);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white !important;
+      font-weight: 600;
+      font-size: 0.85rem;
+    }
+
+    .fw-medium {
+      font-weight: 500;
+      color: #1e293b;
+    }
+
+    .badge {
+      font-size: 0.7rem;
+    }
+  }
+
+  // Buttons
+  .btn-outline-primary {
+    color: #009efb;
+    border-color: #009efb;
+
+    &:hover {
+      background: rgba(0, 158, 251, 0.1);
+      color: #009efb;
+      border-color: #009efb;
+    }
+
+    i {
+      color: inherit !important;
+    }
+  }
+
+  .btn-outline-danger {
+    &:hover {
+      background: rgba(246, 45, 81, 0.1);
+      color: #f62d51;
+      border-color: #f62d51;
+    }
+  }
+
+  .btn-primary {
+    background: linear-gradient(135deg, #009efb, #0079c9);
+    border: none;
+
+    &:hover {
+      background: linear-gradient(135deg, #0089e0, #006db3);
+    }
+
+    i {
+      color: white !important;
+    }
+  }
+
+  // Card styling
+  .card {
+    border-radius: 10px;
+    overflow: visible;
+  }
+}
+
+// Responsive adjustments for plan view
+@media (max-width: 992px) {
+  .plan-view-container {
+    .detail-table td:first-child {
+      width: 100px;
+    }
+
+    .pricing-card .fs-5 {
+      font-size: 0.9rem !important;
+    }
+  }
+}
+
+@media (max-width: 768px) {
+  .plan-view-container {
+    padding: 0.75rem;
+
+    .stat-card .stat-value {
+      font-size: 0.95rem;
+    }
+
+    .nav-tabs .nav-link {
+      font-size: 0.8rem;
+      padding: 0.5rem;
+    }
+
+    .detail-table {
+      font-size: 0.8rem;
+
+      td:first-child {
+        width: 90px;
+        min-width: 80px;
+      }
+    }
+
+    .feature-table,
+    .company-table {
+      font-size: 0.8rem;
+    }
+
+    .breakdown-card {
+      margin-top: 1rem;
+    }
+  }
+}
+
+// ==================== Plan Form - Compact Layout ====================
+
+.plan-form-container {
+  padding: 1rem;
+  max-width: 100%;
+  overflow-x: hidden;
+
+  h5 {
+    color: #1e293b;
+    font-size: 1rem;
+  }
+
+  h6 {
+    color: #1e293b;
+    font-size: 0.85rem;
+  }
+
+  // Tab navigation
+  .nav-tabs {
+    border-bottom: 1px solid #e2e8f0;
+
+    .nav-link {
+      border: none;
+      color: #64748b;
+      font-size: 0.8rem;
+      font-weight: 500;
+      border-radius: 0;
+      margin-bottom: -1px;
+
+      &:hover {
+        color: #009efb;
+      }
+
+      &.active {
+        color: #009efb;
+        background: transparent;
+        border-bottom: 2px solid #009efb;
+      }
+
+      i {
+        color: inherit !important;
+      }
+
+      .badge {
+        font-size: 0.6rem;
+        padding: 0.15rem 0.35rem;
+      }
+    }
+  }
+
+  // Form controls
+  .form-control, .form-select {
+    font-size: 0.8rem;
+  }
+
+  label {
+    font-size: 0.75rem;
+  }
+
+  // Pricing input cards
+  .pricing-input-card {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 0.75rem;
+
+    &.error {
+      border-color: #f62d51;
+    }
+
+    .pricing-header {
+      font-size: 0.8rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+
+      &.monthly {
+        color: #009efb;
+      }
+
+      &.yearly {
+        color: #39c449;
+      }
+    }
+  }
+
+  // Feature form table
+  .feature-form-table {
+    font-size: 0.8rem;
+
+    thead {
+      background: #f8fafc !important;
+
+      th {
+        font-weight: 600 !important;
+        color: #64748b !important;
+        font-size: 0.7rem !important;
+        text-transform: uppercase;
+        padding: 0.5rem 0.4rem;
+        border-bottom: 2px solid #e2e8f0 !important;
+        white-space: nowrap;
+        text-align: center;
+        background: #f8fafc !important;
+
+        &:first-child,
+        &:nth-child(2) {
+          text-align: left;
+        }
+      }
+    }
+
+    tbody {
+      td {
+        padding: 0.4rem;
+        vertical-align: middle;
+
+        .fw-medium {
+          font-size: 0.8rem;
+        }
+
+        small {
+          font-size: 0.7rem;
+        }
+
+        // Input groups in feature table
+        .input-group {
+          .input-group-text {
+            font-size: 0.7rem;
+            padding: 0.2rem 0.3rem;
+            background: #f1f5f9;
+            border-color: #e2e8f0;
+          }
+
+          .form-control {
+            font-size: 0.8rem;
+          }
+        }
+
+        // Selects and inputs
+        .form-control,
+        .form-select {
+          font-size: 0.8rem;
+          padding: 0.25rem 0.4rem;
+        }
+      }
+
+      .disabled-row {
+        opacity: 0.5;
+        background: #f8fafc;
+
+        td {
+          color: #94a3b8;
+        }
+      }
+    }
+  }
+
+  // Preview card
+  .preview-card {
+    max-width: 100%;
+    overflow: hidden;
+
+    .preview-header {
+      .preview-icon {
+        width: 48px;
+        height: 48px;
+        background: linear-gradient(135deg, #009efb, #0079c9);
+        border-radius: 10px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 0.5rem;
+
+        i {
+          color: white !important;
+          font-size: 1.25rem;
+        }
+      }
+
+      .preview-name {
+        font-size: 1rem;
+        font-weight: 600;
+        color: #1e293b;
+        word-break: break-word;
+      }
+    }
+
+    .preview-section {
+      background: #f8fafc;
+      border-radius: 6px;
+      padding: 0.5rem;
+      margin-bottom: 0.5rem;
+
+      .preview-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.25rem 0;
+        font-size: 0.75rem;
+
+        i {
+          color: #64748b !important;
+        }
+      }
+    }
+
+    .preview-pricing {
+      background: #f8fafc;
+      border-radius: 6px;
+      padding: 0.5rem;
+      margin-bottom: 0.5rem;
+      display: flex;
+      justify-content: space-around;
+
+      .price-item {
+        text-align: center;
+
+        span {
+          display: block;
+          font-size: 0.7rem;
+        }
+
+        .price {
+          font-size: 1rem;
+          font-weight: 700;
+        }
+      }
+    }
+
+    .preview-features {
+      .feature-list {
+        .feature-item {
+          display: flex;
+          align-items: center;
+          padding: 0.2rem 0;
+          font-size: 0.75rem;
+
+          i {
+            font-size: 0.8rem;
+          }
+        }
+      }
+    }
+  }
+
+  // Buttons
+  .btn-primary {
+    background: linear-gradient(135deg, #009efb, #0079c9);
+    border: none;
+
+    &:hover {
+      background: linear-gradient(135deg, #0089e0, #006db3);
+    }
+
+    i {
+      color: white !important;
+    }
+  }
+
+  .btn-outline-primary {
+    color: #009efb;
+    border-color: #009efb;
+
+    &:hover {
+      background: rgba(0, 158, 251, 0.1);
+      color: #009efb;
+      border-color: #009efb;
+    }
+  }
+
+  .btn-outline-secondary {
+    color: #64748b;
+    border-color: #e2e8f0;
+
+    &:hover {
+      background: #f1f5f9;
+      color: #334155;
+    }
+  }
+
+  // Card styling
+  .card {
+    border-radius: 10px;
+    overflow: visible;
+  }
+}
+
+// Responsive for plan form
+@media (max-width: 992px) {
+  .plan-form-container {
+    .preview-card {
+      margin-top: 1rem;
+    }
+  }
+}
+
+@media (max-width: 768px) {
+  .plan-form-container {
+    padding: 0.75rem;
+
+    .nav-tabs .nav-link {
+      font-size: 0.75rem;
+      padding: 0.4rem 0.6rem;
+    }
+
+    .feature-form-table {
+      font-size: 0.75rem;
+
+      thead th {
+        padding: 0.4rem;
+        font-size: 0.65rem;
+      }
+
+      tbody td {
+        padding: 0.4rem;
+      }
+    }
+
+    .preview-card {
+      .preview-header .preview-icon {
+        width: 40px;
+        height: 40px;
+
+        i {
+          font-size: 1rem;
+        }
+      }
+
+      .preview-name {
+        font-size: 0.9rem;
+      }
+    }
+  }
+}
+
+// Subscription Management Container - Fix dropdown and add usage panel
+.subscription-mgmt-container {
+  padding: 1rem;
+
+  .subscription-table {
+    font-size: 0.8rem;
+
+    thead {
+      background: #f8fafc !important;
+
+      th {
+        font-weight: 600 !important;
+        color: #64748b !important;
+        font-size: 0.7rem !important;
+        text-transform: uppercase;
+        padding: 0.6rem 0.5rem;
+        border-bottom: 2px solid #e2e8f0 !important;
+        white-space: nowrap;
+        background: #f8fafc !important;
+      }
+    }
+
+    tbody {
+      tr {
+        transition: background-color 0.15s ease;
+        cursor: pointer;
+
+        &:hover {
+          background-color: #f0f9ff;
+        }
+
+        &.selected {
+          background-color: #e0f2fe;
+        }
+      }
+
+      td {
+        padding: 0.5rem;
+        vertical-align: middle;
+      }
+    }
+  }
+
+  .company-avatar {
+    width: 32px;
+    height: 32px;
+    background: linear-gradient(135deg, #009efb, #0079c9);
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white !important;
+    font-weight: 600;
+    font-size: 0.85rem;
+  }
+
+  .stat-card {
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+
+    .stat-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.9rem;
+
+      i {
+        color: inherit !important;
+      }
+    }
+
+    .stat-value {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #1e293b !important;
+    }
+
+    .stat-label {
+      font-size: 0.65rem;
+      color: #64748b !important;
+      text-transform: uppercase;
+    }
+  }
+
+  // Usage panel styles
+  .usage-panel {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+
+    .usage-header {
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid #e2e8f0;
+      background: linear-gradient(135deg, #009efb, #0079c9);
+      border-radius: 10px 10px 0 0;
+      color: white !important;
+
+      * {
+        color: white !important;
+      }
+    }
+
+    .usage-content {
+      padding: 1rem;
+    }
+
+    .usage-card {
+      background: white;
+      border-radius: 8px;
+      padding: 0.75rem;
+      border: 1px solid #e2e8f0;
+      height: 100%;
+      min-width: 120px;
+
+      .usage-icon {
+        width: 36px;
+        height: 36px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+
+        i {
+          color: inherit !important;
+          font-size: 1rem;
+        }
+      }
+
+      .progress {
+        height: 6px;
+        border-radius: 3px;
+      }
+
+      .fw-medium,
+      .fw-semibold {
+        color: #1e293b !important;
+      }
+
+      .fw-bold {
+        color: #0f172a !important;
+      }
+
+      .text-muted {
+        color: #64748b !important;
+      }
+
+      small {
+        color: #64748b !important;
+      }
+    }
+
+    .usage-alerts {
+      .alert-item {
+        padding: 0.5rem;
+        background: #fef3c7;
+        border-radius: 6px;
+        margin-bottom: 0.5rem;
+        border-left: 3px solid #f59e0b;
+      }
+    }
+  }
+}
+
+// Invoice Management Container
+.invoice-mgmt-container {
+  padding: 1rem;
+  max-width: 100%;
+  overflow-x: hidden;
+
+  .invoice-table {
+    font-size: 0.8rem;
+
+    thead {
+      background: #f8fafc !important;
+
+      th {
+        font-weight: 600 !important;
+        color: #64748b !important;
+        font-size: 0.7rem !important;
+        text-transform: uppercase;
+        padding: 0.6rem 0.5rem;
+        border-bottom: 2px solid #e2e8f0 !important;
+        white-space: nowrap;
+        background: #f8fafc !important;
+      }
+    }
+
+    tbody {
+      tr {
+        transition: background-color 0.15s ease;
+
+        &:hover {
+          background-color: #f8fafc;
+        }
+      }
+
+      td {
+        padding: 0.5rem;
+        vertical-align: middle;
+        color: #334155 !important;
+      }
+    }
+  }
+
+  .company-avatar {
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    background: linear-gradient(135deg, #009efb, #0079c9);
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white !important;
+    font-weight: 600;
+    font-size: 0.85rem;
+  }
+
+  .stat-card {
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+
+    .stat-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.9rem;
+
+      i {
+        color: inherit !important;
+      }
+    }
+
+    .stat-value {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #1e293b !important;
+    }
+
+    .stat-label {
+      font-size: 0.65rem;
+      color: #64748b !important;
+      text-transform: uppercase;
+    }
+  }
+}

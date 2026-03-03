@@ -17,11 +17,13 @@ import ComponentCard from '../../components/ComponentCard';
 import BudgetModal from '../../components/BudgetModal/BudgetModal';
 import './Budget.scss';
 import ProjectService from '../../services/ProjectService';
-import { getEntityId } from '../localStorageUtil';
+import { getEntityId, formatCurrency, getCompanyCurrency } from '../localStorageUtil';
 import BudgetService from '../../services/BudgetService';
+import { useFeatureFlags } from '../../hooks/useFeatureFlags';
 
 const Budget = () => {
   const navigate = useNavigate();
+  const { isBlocked, getUsage, getFeature } = useFeatureFlags();
   const [projects, setProjects] = useState([]);
   const [allocations, setAllocations] = useState([]);
   const [editingBudget, setEditingBudget] = useState(null);
@@ -98,13 +100,13 @@ const Budget = () => {
 
       setAllocations(formatted);
     } catch (error) {
+      // After apiClient.formatError: error.data contains response data, error.message contains the message
       const errorMessage =
-        (error.response && error.response.data && error.response.data.errorMessage) ||
-        (error.response && error.response.errorMessage) ||
-        error.errorMessage ||
+        error?.data?.errorMessage ||
+        error?.message ||
         'Failed to load budgets';
-      toast.dismiss();
-      toast.error(errorMessage);
+      // Note: apiClient already shows toast for 400/500 errors, but we show for other cases
+      console.error('Error loading budgets:', errorMessage);
       setAllocations([]); // Clear allocations on error
     } finally {
       setIsLoading(false);
@@ -166,40 +168,56 @@ const Budget = () => {
         fetchAllBudgets();
       }
     } catch (error) {
+      // After apiClient.formatError: error.data contains response data, error.message contains the message
       const errorMessage =
-        (error.response && error.response.data && error.response.data.errorMessage) ||
-        (error.response && error.response.errorMessage) ||
-        error.errorMessage ||
+        error?.data?.errorMessage ||
+        error?.message ||
         'Failed to delete budget';
-      toast.dismiss();
-      toast.error(errorMessage);
+      console.error('Error deleting budget:', errorMessage);
+      // Note: apiClient already shows toast for 400/500 errors
     }
   };
 
   const handleProjectAIForecast = async (projectName, budgets) => {
     try {
+      // Check if AI feature is blocked due to usage limits
+      if (isBlocked('AI_CYCLES')) {
+        const feature = getFeature('AI_CYCLES');
+        const usage = getUsage('AI_CYCLES');
+        Swal.fire({
+          title: 'AI Limit Reached',
+          html: `
+            <div class="text-center">
+              <i class="bi bi-exclamation-octagon text-danger" style="font-size: 48px;"></i>
+              <p class="mt-3">${feature?.blockReason || 'You have reached your AI usage limit for this billing period.'}</p>
+              <p class="text-muted">Used: ${usage.currentUsage} / ${usage.limit}</p>
+              <p class="mt-2">Please upgrade your plan to continue using AI features.</p>
+            </div>
+          `,
+          icon: null,
+          confirmButtonText: 'OK',
+          confirmButtonColor: '#dc3545',
+        });
+        return;
+      }
+
       // Get the main project ID from the first budget
       const projectId = budgets.length > 0 ? budgets[0].projectId : null;
-      
+
       if (!projectId) {
         toast.error('No project data available for AI forecast');
         return;
       }
 
       toast.info(`Generating AI forecast for ${projectName}...`);
-      
+
       const response = await BudgetService.handleAiRecommendation(companyId, projectId);
       const forecast = response.data;
       
-      // Format large numbers properly
+      // Format large numbers properly using company currency
       const formatLargeNumber = (number) => {
-        if (!number) return '$0.00';
-        return new Intl.NumberFormat('en-US', {
-          style: 'currency',
-          currency: 'USD',
-          minimumFractionDigits: 0,
-          maximumFractionDigits: 0
-        }).format(number);
+        if (!number) return formatCurrency(0);
+        return formatCurrency(number);
       };
 
       // Create HTML content for better formatting
@@ -266,16 +284,28 @@ const Budget = () => {
       
     } catch (error) {
       console.error('Error fetching project AI forecast:', error);
-      toast.error('Failed to get AI forecast. Please try again.');
+      // After apiClient.formatError: error.data contains response data, error.message contains the message
+      const errorMessage =
+        error?.data?.errorMessage ||
+        error?.message ||
+        'Failed to get AI forecast. Please try again.';
+
+      // Check if it's a usage limit error
+      if (errorMessage.toLowerCase().includes('limit') || errorMessage.toLowerCase().includes('usage')) {
+        toast.dismiss(); // Dismiss any existing toasts (apiClient may have shown one)
+        Swal.fire({
+          title: 'AI Limit Reached',
+          text: errorMessage,
+          icon: 'warning',
+          confirmButtonText: 'OK',
+          confirmButtonColor: '#dc3545',
+        });
+      }
+      // Note: Don't show toast for other errors - apiClient.handleBadRequest already shows one
     }
   };
 
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(amount);
-  };
+  // formatCurrency is imported from localStorageUtil and uses company currency
 
   const getStatusColor = (status) => {
     switch (status?.toLowerCase()) {
@@ -420,7 +450,7 @@ const Budget = () => {
                         <i className="bi bi-cart3 me-1" style={{ fontSize: '10px', color: '#e9ecef' }}></i>
                         <small style={{ fontSize: '12px', color: '#e9ecef', fontWeight: '600' }}>Projected (In Carts)</small>
                       </div>
-                      <strong style={{ fontSize: '12px', color: '#e9ecef', fontWeight: '700' }}>$0.00</strong>
+                      <strong style={{ fontSize: '12px', color: '#e9ecef', fontWeight: '700' }}>{formatCurrency(0)}</strong>
                     </>
                   )}
                 </div>

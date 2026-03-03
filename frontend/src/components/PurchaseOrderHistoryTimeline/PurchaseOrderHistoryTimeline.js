@@ -23,6 +23,8 @@ import {
   FaClipboardCheck,
 } from 'react-icons/fa';
 import PurchaseOrderService from '../../services/PurchaseOrderService';
+import { formatCurrency, getCurrencySymbol, getCompanyCurrency } from '../../pages/localStorageUtil';
+import { formatDualCurrency, getUserType } from '../../utils/currencyUtils';
 import '../HistoryTimeline/HistoryTimeline.scss';
 
 const EVENT_CONFIG = {
@@ -41,7 +43,59 @@ const EVENT_CONFIG = {
   DELIVER: { icon: FaHome, color: '#28a745', bgColor: '#d4edda', label: 'Delivered', cardClass: 'event-create' },
 };
 
-const PurchaseOrderHistoryTimeline = ({ isOpen, toggle, purchaseOrderId, companyId }) => {
+const PurchaseOrderHistoryTimeline = ({ isOpen, toggle, purchaseOrderId, companyId, supplierCurrency = 'USD', companyCurrency }) => {
+  // Get company currency from props or localStorage
+  const effectiveCompanyCurrency = companyCurrency || getCompanyCurrency() || 'INR';
+  const userType = getUserType();
+
+  // Helper to format order total with dual currency display
+  // Order totals are stored in supplier currency, but we want to show dual currency
+  const formatOrderTotalDualCurrency = (amount, conversionRate) => {
+    if (!amount && amount !== 0) return formatCurrency(0, supplierCurrency);
+
+    // If same currency, just show single format
+    if (supplierCurrency === effectiveCompanyCurrency) {
+      return formatCurrency(amount, supplierCurrency);
+    }
+
+    // If we have a conversion rate from the audit, use it
+    // Otherwise, we can only show the original currency
+    const rate = conversionRate || null;
+    if (rate && rate !== 1) {
+      const convertedAmount = amount * rate;
+      return formatDualCurrency({
+        originalPrice: amount,
+        originalCurrency: supplierCurrency,
+        convertedPrice: convertedAmount,
+        convertedCurrency: effectiveCompanyCurrency,
+      }, userType);
+    }
+
+    // No conversion rate - show supplier currency
+    return formatCurrency(amount, supplierCurrency);
+  };
+
+  // Helper to format line item amount with dual currency display
+  const formatLineItemAmount = (amount, audit) => {
+    const originalCurrency = audit.originalCurrencyCode || audit.currencyCode || supplierCurrency;
+    const convertedCurrency = audit.convertedCurrencyCode || effectiveCompanyCurrency;
+    const conversionRate = audit.conversionRate;
+
+    // If no conversion rate or same currency, single format with supplier currency
+    if (!conversionRate || conversionRate === 1 || originalCurrency === convertedCurrency) {
+      return formatCurrency(amount, originalCurrency);
+    }
+
+    // Dual currency display - amount is in original (supplier) currency
+    const convertedAmount = amount * conversionRate;
+    return formatDualCurrency({
+      originalPrice: amount,
+      originalCurrency: originalCurrency,
+      convertedPrice: convertedAmount,
+      convertedCurrency: convertedCurrency,
+    }, userType);
+  };
+
   const [audits, setAudits] = useState([]);
   const [loading, setLoading] = useState(false);
   const [expandedItems, setExpandedItems] = useState(new Set());
@@ -92,10 +146,6 @@ const PurchaseOrderHistoryTimeline = ({ isOpen, toggle, purchaseOrderId, company
     });
   };
 
-  const formatCurrency = (amount) => {
-    if (amount == null || Number.isNaN(Number(amount))) return '$0.00';
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(amount));
-  };
 
   const toggleExpand = (index) => {
     setExpandedItems((prev) => {
@@ -139,7 +189,7 @@ const PurchaseOrderHistoryTimeline = ({ isOpen, toggle, purchaseOrderId, company
             {audit.newOrderTotal && (
               <div className="detail-row">
                 <span className="detail-label">Total:</span>
-                <span className="detail-value"><span className="new-value">{formatCurrency(audit.newOrderTotal)}</span></span>
+                <span className="detail-value"><span className="new-value">{formatOrderTotalDualCurrency(audit.newOrderTotal, audit.conversionRate)}</span></span>
               </div>
             )}
             {audit.newExpectedDeliveryDate && (
@@ -168,9 +218,9 @@ const PurchaseOrderHistoryTimeline = ({ isOpen, toggle, purchaseOrderId, company
               <div className="detail-row">
                 <span className="detail-label">Total:</span>
                 <span className="detail-value">
-                  <span className="old-value">{formatCurrency(audit.oldOrderTotal)}</span>
+                  <span className="old-value">{formatOrderTotalDualCurrency(audit.oldOrderTotal, audit.oldConversionRate || audit.conversionRate)}</span>
                   <span className="arrow">→</span>
-                  <span className="new-value">{formatCurrency(audit.newOrderTotal)}</span>
+                  <span className="new-value">{formatOrderTotalDualCurrency(audit.newOrderTotal, audit.newConversionRate || audit.conversionRate)}</span>
                 </span>
               </div>
             )}
@@ -284,11 +334,11 @@ const PurchaseOrderHistoryTimeline = ({ isOpen, toggle, purchaseOrderId, company
             </div>
             <div className="detail-row">
               <span className="detail-label">Unit Price:</span>
-              <span className="detail-value"><span className="new-value">{formatCurrency(audit.newUnitPrice)}</span></span>
+              <span className="detail-value"><span className="new-value">{formatLineItemAmount(audit.newUnitPrice, audit)}</span></span>
             </div>
             <div className="detail-row">
               <span className="detail-label">Total:</span>
-              <span className="detail-value"><span className="new-value">{formatCurrency(audit.newLineAmount || (audit.newQuantity * audit.newUnitPrice))}</span></span>
+              <span className="detail-value"><span className="new-value">{formatLineItemAmount(audit.newLineAmount || (audit.newQuantity * audit.newUnitPrice), audit)}</span></span>
             </div>
             {(audit.newProject || audit.newGLAccount || audit.newDepartment) && (
               <div className="dimension-tags">
@@ -317,9 +367,9 @@ const PurchaseOrderHistoryTimeline = ({ isOpen, toggle, purchaseOrderId, company
               <div className="detail-row">
                 <span className="detail-label">Unit Price:</span>
                 <span className="detail-value">
-                  <span className="old-value">{formatCurrency(audit.oldUnitPrice)}</span>
+                  <span className="old-value">{formatLineItemAmount(audit.oldUnitPrice, audit)}</span>
                   <span className="arrow">→</span>
-                  <span className="new-value">{formatCurrency(audit.newUnitPrice)}</span>
+                  <span className="new-value">{formatLineItemAmount(audit.newUnitPrice, audit)}</span>
                 </span>
               </div>
             )}
@@ -327,9 +377,9 @@ const PurchaseOrderHistoryTimeline = ({ isOpen, toggle, purchaseOrderId, company
               <div className="detail-row">
                 <span className="detail-label">Total:</span>
                 <span className="detail-value">
-                  <span className="old-value">{formatCurrency(audit.oldLineAmount)}</span>
+                  <span className="old-value">{formatLineItemAmount(audit.oldLineAmount, audit)}</span>
                   <span className="arrow">→</span>
-                  <span className="new-value">{formatCurrency(audit.newLineAmount)}</span>
+                  <span className="new-value">{formatLineItemAmount(audit.newLineAmount, audit)}</span>
                 </span>
               </div>
             )}
@@ -347,6 +397,7 @@ const PurchaseOrderHistoryTimeline = ({ isOpen, toggle, purchaseOrderId, company
         );
 
       case 'LINE_ITEM_DELETE':
+        const deleteCurrency = audit.originalCurrencyCode || audit.currencyCode || supplierCurrency;
         return (
           <div className="event-details">
             <div className="detail-row">
@@ -360,9 +411,9 @@ const PurchaseOrderHistoryTimeline = ({ isOpen, toggle, purchaseOrderId, company
             <div className="detail-row">
               <span className="detail-label">Amount:</span>
               <span className="detail-value">
-                <span className="old-value">{formatCurrency(audit.oldLineAmount)}</span>
+                <span className="old-value">{formatLineItemAmount(audit.oldLineAmount, audit)}</span>
                 <span className="arrow">→</span>
-                <span className="new-value deleted-value">$0.00</span>
+                <span className="new-value deleted-value">{formatCurrency(0, deleteCurrency)}</span>
               </span>
             </div>
           </div>
@@ -460,9 +511,9 @@ const PurchaseOrderHistoryTimeline = ({ isOpen, toggle, purchaseOrderId, company
             <div className="detail-row">
               <span className="detail-label">Total:</span>
               <span className="detail-value">
-                <span className="old-value">{formatCurrency(audit.oldOrderTotal)}</span>
+                <span className="old-value">{formatOrderTotalDualCurrency(audit.oldOrderTotal, audit.conversionRate)}</span>
                 <span className="arrow">→</span>
-                <span className="new-value deleted-value">$0.00</span>
+                <span className="new-value deleted-value">{formatCurrency(0, supplierCurrency)}</span>
               </span>
             </div>
           </div>
@@ -647,6 +698,8 @@ PurchaseOrderHistoryTimeline.propTypes = {
   toggle: PropTypes.func.isRequired,
   purchaseOrderId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
   companyId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+  supplierCurrency: PropTypes.string,
+  companyCurrency: PropTypes.string,
 };
 
 export default PurchaseOrderHistoryTimeline;

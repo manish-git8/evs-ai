@@ -8,37 +8,61 @@ import {
   Button,
   Spinner,
   Badge,
+  Alert,
 } from 'reactstrap';
 import { toast, ToastContainer } from 'react-toastify';
-import Swal from 'sweetalert2';
 import 'react-toastify/dist/ReactToastify.css';
 import { useNavigate } from 'react-router-dom';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import 'react-bootstrap-table/dist/react-bootstrap-table-all.min.css';
 import BillingService from '../../services/BillingService';
-import { getEntityId, formatDate } from '../localStorageUtil';
+import { getEntityId, formatDate, getUserRole, getEntityType, getCurrencySymbol } from '../localStorageUtil';
 import './Billing.scss';
+
+// Get API base URL for file downloads
+const API_BASE_URL = process.env.REACT_APP_API_URL || '';
 
 const BillingInvoices = () => {
   const navigate = useNavigate();
   const companyId = getEntityId();
+  const userRoles = getUserRole();
+  const entityType = getEntityType();
+
+  // Check if user is admin
+  const isAdmin = entityType === 'ADMIN' || userRoles.includes('ADMIN');
 
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
   const [size, setSize] = useState(10);
-  const [setTotalInvoices] = useState(0);
-
- 
+  const [totalInvoices, setTotalInvoices] = useState(0);
 
   const fetchInvoices = async () => {
     try {
       setLoading(true);
-      const response = await BillingService.getInvoicesByCompany(companyId, page, size);
-      setInvoices(response.data);
-      setTotalInvoices(response.data.length);
+      // Use secure endpoint for company users, admin endpoint for admins
+      const response = isAdmin
+        ? await BillingService.getInvoicesByCompany(companyId, page, size)
+        : await BillingService.getMyInvoices(page, size);
+
+      // Handle paginated response - extract content array
+      const data = response.data;
+      if (data && data.content) {
+        // Paginated response
+        setInvoices(data.content);
+        setTotalInvoices(data.totalElements || data.content.length);
+      } else if (Array.isArray(data)) {
+        // Direct array response
+        setInvoices(data);
+        setTotalInvoices(data.length);
+      } else {
+        // Fallback
+        setInvoices([]);
+        setTotalInvoices(0);
+      }
     } catch (error) {
       toast.error(error.response?.data?.message || 'Failed to fetch invoices');
+      setInvoices([]);
     } finally {
       setLoading(false);
     }
@@ -48,13 +72,26 @@ const BillingInvoices = () => {
     fetchInvoices();
   }, [page, size]);
 
+  // Helper to construct full PDF URL
+  const getPdfDownloadUrl = (pdfUrl) => {
+    if (!pdfUrl) return null;
+    // If already absolute URL, use as-is
+    if (pdfUrl.startsWith('http://') || pdfUrl.startsWith('https://')) {
+      return pdfUrl;
+    }
+    // Prepend API base URL for relative paths, avoiding double slashes
+    const baseUrl = API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BASE_URL;
+    const path = pdfUrl.startsWith('/') ? pdfUrl : `/${pdfUrl}`;
+    return `${baseUrl}${path}`;
+  };
+
   const handleDownloadPdf = async (invoiceId, pdfUrl) => {
     if (pdfUrl) {
-      window.open(pdfUrl, '_blank');
+      window.open(getPdfDownloadUrl(pdfUrl), '_blank');
     } else {
       try {
         const response = await BillingService.generateInvoicePdf(invoiceId);
-        window.open(response.data, '_blank');
+        window.open(getPdfDownloadUrl(response.data), '_blank');
         toast.success('Invoice PDF generated successfully');
       } catch (error) {
         toast.error('Failed to generate invoice PDF');
@@ -62,33 +99,8 @@ const BillingInvoices = () => {
     }
   };
 
-  const handlePayment = async (invoice) => {
-    const result = await Swal.fire({
-      title: 'Process Payment',
-      html: `
-        <div class="text-start">
-          <p><strong>Invoice:</strong> ${invoice.invoiceNumber}</p>
-          <p><strong>Amount:</strong> $${invoice.totalAmount ? invoice.totalAmount.toFixed(2) : '0.00'}</p>
-          <p class="text-muted small">Payment will be processed via Stripe</p>
-        </div>
-      `,
-      icon: 'question',
-      showCancelButton: true,
-      confirmButtonText: 'Process Payment',
-      confirmButtonColor: '#0d6efd',
-      cancelButtonText: 'Cancel',
-    });
-
-    if (!result.isConfirmed) return;
-
-    try {
-      await BillingService.processPayment(invoice.invoiceId, 'STRIPE');
-      toast.success('Payment processed successfully!');
-      fetchInvoices();
-    } catch (error) {
-      toast.error(error.response?.data?.message || 'Payment failed');
-    }
-  };
+  // Note: Online payment is disabled for enterprise customers
+  // Payments are made via bank transfer and recorded by admin
 
   const statusFormatter = (cell) => {
     const colors = {
@@ -104,8 +116,9 @@ const BillingInvoices = () => {
     return formatDate(cell);
   };
 
-  const amountFormatter = (cell) => {
-    return `$${cell ? parseFloat(cell).toFixed(2) : '0.00'}`;
+  const amountFormatter = (cell, row) => {
+    const symbol = getCurrencySymbol(row?.currency || 'USD');
+    return `${symbol}${cell ? parseFloat(cell).toFixed(2) : '0.00'}`;
   };
 
   const actionsFormatter = (cell, row) => {
@@ -121,15 +134,10 @@ const BillingInvoices = () => {
           <i className="bi bi-download" />
         </Button>
         {row.status === 'PENDING' && (
-          <Button
-            color="success"
-            size="sm"
-            onClick={() => handlePayment(row)}
-            title="Pay Now"
-          >
-            <i className="bi bi-credit-card me-1" />
-            Pay
-          </Button>
+          <Badge color="primary" className="ms-2">
+            <i className="bi bi-bank me-1" />
+            Bank Transfer
+          </Badge>
         )}
       </div>
     );
@@ -187,6 +195,18 @@ const BillingInvoices = () => {
         </Col>
       </Row>
 
+      <Row className="mb-3">
+        <Col xs="12">
+          <Alert color="primary" className="d-flex align-items-center">
+            <i className="bi bi-info-circle-fill me-2 fs-5" />
+            <div>
+              <strong>Enterprise Billing:</strong> Invoices are paid via bank transfer.
+              Once payment is received, your admin will record the payment and the invoice status will be updated.
+            </div>
+          </Alert>
+        </Col>
+      </Row>
+
       <Row>
         <Col xs="12">
           <Card>
@@ -196,95 +216,108 @@ const BillingInvoices = () => {
                 All Invoices
               </CardTitle>
 
-              <BootstrapTable
-                data={invoices}
-                options={options}
-                pagination
-                striped
-                hover
-                condensed
-                search={false}
-              >
-                <TableHeaderColumn
-                  dataField="invoiceId"
-                  isKey
-                  hidden
+              {loading ? (
+                <div className="text-center py-5">
+                  <Spinner color="primary" />
+                  <p className="mt-2">Loading invoices...</p>
+                </div>
+              ) : invoices.length === 0 ? (
+                <div className="text-center py-5">
+                  <i className="bi bi-inbox fs-1 text-muted mb-3 d-block" />
+                  <h5 className="text-muted">No invoices found</h5>
+                  <p className="text-muted">Invoices will appear here once they are generated</p>
+                </div>
+              ) : (
+                <BootstrapTable
+                  data={invoices}
+                  options={options}
+                  pagination
+                  striped
+                  hover
+                  condensed
+                  search={false}
                 >
-                  ID
-                </TableHeaderColumn>
+                  <TableHeaderColumn
+                    dataField="invoiceId"
+                    isKey
+                    hidden
+                  >
+                    ID
+                  </TableHeaderColumn>
 
-                <TableHeaderColumn
-                  dataField="invoiceNumber"
-                  dataSort
-                  width="150"
-                >
-                  Invoice #
-                </TableHeaderColumn>
+                  <TableHeaderColumn
+                    dataField="invoiceNumber"
+                    dataSort
+                    width="150"
+                  >
+                    Invoice #
+                  </TableHeaderColumn>
 
-                <TableHeaderColumn
-                  dataField="issueDate"
-                  dataFormat={dateFormatter}
-                  dataSort
-                  width="120"
-                >
-                  Invoice Date
-                </TableHeaderColumn>
+                  <TableHeaderColumn
+                    dataField="invoiceDate"
+                    dataFormat={dateFormatter}
+                    dataSort
+                    width="120"
+                  >
+                    Invoice Date
+                  </TableHeaderColumn>
 
-                <TableHeaderColumn
-                  dataField="dueDate"
-                  dataFormat={dateFormatter}
-                  dataSort
-                  width="120"
-                >
-                  Due Date
-                </TableHeaderColumn>
+                  <TableHeaderColumn
+                    dataField="paymentDueDate"
+                    dataFormat={dateFormatter}
+                    dataSort
+                    width="120"
+                  >
+                    Due Date
+                  </TableHeaderColumn>
 
-                <TableHeaderColumn
-                  dataField="amount"
-                  dataFormat={amountFormatter}
-                  dataAlign="right"
-                  width="100"
-                >
-                  Amount
-                </TableHeaderColumn>
+                  <TableHeaderColumn
+                    dataField="baseAmount"
+                    dataFormat={amountFormatter}
+                    dataAlign="right"
+                    width="100"
+                  >
+                    Amount
+                  </TableHeaderColumn>
 
-                <TableHeaderColumn
-                  dataField="tax"
-                  dataFormat={amountFormatter}
-                  dataAlign="right"
-                  width="80"
-                >
-                  Tax
-                </TableHeaderColumn>
+                  <TableHeaderColumn
+                    dataField="taxAmount"
+                    dataFormat={amountFormatter}
+                    dataAlign="right"
+                    width="80"
+                  >
+                    Tax
+                  </TableHeaderColumn>
 
-                <TableHeaderColumn
-                  dataField="totalAmount"
-                  dataFormat={amountFormatter}
-                  dataAlign="right"
-                  dataSort
-                  width="120"
-                >
-                  Total
-                </TableHeaderColumn>
+                  <TableHeaderColumn
+                    dataField="totalAmount"
+                    dataFormat={amountFormatter}
+                    dataAlign="right"
+                    dataSort
+                    width="120"
+                  >
+                    Total
+                  </TableHeaderColumn>
 
-                <TableHeaderColumn
-                  dataField="status"
-                  dataFormat={statusFormatter}
-                  dataAlign="center"
-                  width="120"
-                >
-                  Status
-                </TableHeaderColumn>
+                  <TableHeaderColumn
+                    dataField="status"
+                    dataFormat={statusFormatter}
+                    dataAlign="center"
+                    width="120"
+                  >
+                    Status
+                  </TableHeaderColumn>
 
-                <TableHeaderColumn
-                  dataField="actions"
-                  dataFormat={actionsFormatter}
-                  dataAlign="center"
-                  width="150"
-                >
-                  Actions
-                </TableHeaderColumn>
-              </BootstrapTable>
+                  <TableHeaderColumn
+                    dataField="actions"
+                    dataFormat={actionsFormatter}
+                    dataAlign="center"
+                    width="150"
+                  >
+                    Actions
+                  </TableHeaderColumn>
+                </BootstrapTable>
+              )}
             </CardBody>
           </Card>
         </Col>

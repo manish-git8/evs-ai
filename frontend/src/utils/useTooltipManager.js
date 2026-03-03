@@ -7,13 +7,11 @@ const useTooltipManager = () => {
   useEffect(() => {
     const handleScroll = () => {
       if (activeTooltip.current) {
-        try {
-          const tooltip = bootstrap.Tooltip.getInstance(activeTooltip.current);
-          if (tooltip) {
-            tooltip.dispose();
-            activeTooltip.current = null;
-          }
-        } catch (e) { /* ignore */ }
+        const tooltip = bootstrap.Tooltip.getInstance(activeTooltip.current);
+        if (tooltip) {
+          tooltip.dispose();
+          activeTooltip.current = null;
+        }
       }
     };
 
@@ -21,12 +19,10 @@ const useTooltipManager = () => {
     return () => {
       window.removeEventListener('scroll', handleScroll, true);
       if (activeTooltip.current) {
-        try {
-          const tooltip = bootstrap.Tooltip.getInstance(activeTooltip.current);
-          if (tooltip) {
-            tooltip.dispose();
-          }
-        } catch (e) { /* ignore */ }
+        const tooltip = bootstrap.Tooltip.getInstance(activeTooltip.current);
+        if (tooltip) {
+          tooltip.dispose();
+        }
       }
     };
   }, []);
@@ -35,34 +31,28 @@ const useTooltipManager = () => {
     const el = e.currentTarget;
 
     if (activeTooltip.current === el) {
-      try {
-        const existingTooltip = bootstrap.Tooltip.getInstance(el);
-        if (existingTooltip) {
-          existingTooltip.dispose();
-          activeTooltip.current = null;
-        }
-      } catch (e) { /* ignore */ }
+      const existingTooltip = bootstrap.Tooltip.getInstance(el);
+      if (existingTooltip) {
+        existingTooltip.dispose();
+        activeTooltip.current = null;
+      }
       return;
     }
 
     if (activeTooltip.current) {
-      try {
-        const oldTooltip = bootstrap.Tooltip.getInstance(activeTooltip.current);
-        if (oldTooltip) {
-          oldTooltip.dispose();
-        }
-      } catch (e) { /* ignore */ }
+      const oldTooltip = bootstrap.Tooltip.getInstance(activeTooltip.current);
+      if (oldTooltip) {
+        oldTooltip.dispose();
+      }
     }
 
-    try {
-      el.setAttribute('data-bs-original-title', content);
-      const tooltip = new bootstrap.Tooltip(el, {
-        trigger: 'manual',
-        placement: 'top',
-      });
-      tooltip.show();
-      activeTooltip.current = el;
-    } catch (e) { /* ignore */ }
+    el.setAttribute('data-bs-original-title', content);
+    const tooltip = new bootstrap.Tooltip(el, {
+      trigger: 'manual',
+      placement: 'top',
+    });
+    tooltip.show();
+    activeTooltip.current = el;
   };
 
   return { handleTooltip };

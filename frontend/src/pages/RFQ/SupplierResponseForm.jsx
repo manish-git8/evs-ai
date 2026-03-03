@@ -25,6 +25,7 @@ import ComponentCard from "../../components/ComponentCard";
 import RqfService from "../../services/RfqService";
 import SupplierService from "../../services/SupplierService";
 import { getEntityId, getUserId } from "../localStorageUtil";
+import { formatCurrency, getCurrencySymbol } from "../../utils/currencyUtils";
 import UserService from "../../services/UserService";
 import { RFQ_SUPPLIER_STATUS } from "../../constant/RfqConstant";
 import AddressService from "../../services/AddressService";
@@ -875,6 +876,16 @@ const SupplierResponseForm = () => {
     [selectedItems, responseItems, rfqData]
   );
 
+  // Get currency for selected items total - if all from same supplier, use that currency
+  const selectedItemsCurrency = useMemo(() => {
+    const supplierIds = [...new Set(Array.from(selectedItems.values()))];
+    if (supplierIds.length === 1) {
+      const supplier = suppliers.find(s => s.supplierId === supplierIds[0]);
+      return supplier?.supplierCurrency || 'USD';
+    }
+    return 'USD'; // Mixed suppliers - default to USD
+  }, [selectedItems, suppliers]);
+
   const suppliersWithSelections = useMemo(() => {
     const supplierIds = new Set(selectedItems.values());
     return suppliers.filter(s => supplierIds.has(s.supplierId));
@@ -929,6 +940,7 @@ const SupplierResponseForm = () => {
           <SelectionSummaryBar
             selectedItemsCount={selectedItems.size}
             totalValue={totalValue}
+            totalValueCurrency={selectedItemsCurrency}
             suppliersWithSelections={suppliersWithSelections}
             onRequestSignoff={() => setShowSelectedItemsSignoffModal(true)}
             isSignoffRequested={isSignoff}
@@ -1265,7 +1277,9 @@ const SupplierResponseForm = () => {
             <h6 className="text-primary mb-3">Selected Items Summary:</h6>
             <div className="border rounded p-3" style={{ maxHeight: '200px', overflowY: 'auto' }}>
               {Array.from(selectedItems.entries()).map(([itemId, supplierId]) => {
-                const supplier = getSupplierName(supplierId);
+                const supplierName = getSupplierName(supplierId);
+                const supplierObj = suppliers.find(s => s.supplierId === supplierId);
+                const supplierCurrency = supplierObj?.supplierCurrency || 'USD';
                 const item = getItemDetails(itemId);
                 const supplierResponse = responseItems.find(r => r.supplierId === supplierId);
                 const responseItem = supplierResponse?.items.find(i => i.rfqItemId === itemId);
@@ -1275,14 +1289,14 @@ const SupplierResponseForm = () => {
                   <div key={`modal-${supplierId}-${itemId}`} className="mb-3 p-2 bg-light rounded">
                     <div className="d-flex justify-content-between align-items-start">
                       <div>
-                        <div className="fw-bold text-primary">{supplier}</div>
+                        <div className="fw-bold text-primary">{supplierName}</div>
                         <div className="small"><strong>{item?.partId}</strong> - {item?.description}</div>
                         <div className="small text-muted">
-                          ${parseFloat(responseItem?.unitPrice || 0).toFixed(2)} × {responseItem?.quantity || item?.quantity} {item?.uom}
+                          {formatCurrency(parseFloat(responseItem?.unitPrice || 0), supplierCurrency)} × {responseItem?.quantity || item?.quantity} {item?.uom}
                         </div>
                       </div>
                       <div className="text-end">
-                        <div className="fw-bold text-success">${itemTotal.toFixed(2)}</div>
+                        <div className="fw-bold text-success">{formatCurrency(itemTotal, supplierCurrency)}</div>
                       </div>
                     </div>
                   </div>
@@ -1291,7 +1305,7 @@ const SupplierResponseForm = () => {
               <div className="border-top pt-2 mt-2">
                 <div className="d-flex justify-content-between fw-bold">
                   <span>Total Value:</span>
-                  <span className="text-success">${totalValue.toFixed(2)}</span>
+                  <span className="text-success">{formatCurrency(totalValue, selectedItemsCurrency)}</span>
                 </div>
               </div>
             </div>
@@ -1472,7 +1486,7 @@ const SupplierResponseForm = () => {
                         </a>
                       </td>
                       <td>{po.supplier?.name || 'Unknown Supplier'}</td>
-                      <td>${po.orderTotal?.toFixed(2) || '0.00'}</td>
+                      <td>{formatCurrency(po.orderTotal || 0, po.currencyCode || po.supplier?.currency || 'USD')}</td>
                       <td>
                         <Badge color={
                           po.orderStatus === 'APPROVED' ? 'success' :

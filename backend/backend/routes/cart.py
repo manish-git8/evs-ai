@@ -96,7 +96,6 @@ async def approve_cart_endpoint(request: Request, approve_request: ApproveCartRe
         company_id = get_company_id_from_token(token)
         user_id = get_user_id_from_token(token)
         first_name = get_user_first_name_from_token(token)
-        print(f"[APPROVE-CART-ENDPOINT] cart_id={cart_id}, company_id={company_id}, user_id={user_id}, decision={decision}")
         
         if not user_id:
             raise HTTPException(
@@ -123,14 +122,12 @@ async def approve_cart_endpoint(request: Request, approve_request: ApproveCartRe
                 c_id = str(c.get("cartId", ""))
                 if c_no == cart_id_str or c_id == cart_id_str:
                     resolved_cart_id = int(c_id) if c_id.isdigit() else c.get("cartId", cart_id)
-                    print(f"[APPROVE-CART-ENDPOINT] Resolved cart_number={cart_id} -> cartId={resolved_cart_id}")
                     break
-        except Exception as resolve_err:
-            print(f"[APPROVE-CART-ENDPOINT] Cart resolution skipped: {resolve_err}")
-        
+        except Exception:
+            pass  # Cart number resolution is best-effort
+
         # Call the approve cart function with decision and notes
         result = await approve_cart(token, company_id, resolved_cart_id, user_id, first_name, decision, notes)
-        print(f"[APPROVE-CART-ENDPOINT] SUCCESS: {result}")
         
         action = "approved" if decision.lower() == "approved" else "rejected"
 

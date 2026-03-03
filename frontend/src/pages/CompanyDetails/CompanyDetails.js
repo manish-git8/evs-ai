@@ -19,6 +19,7 @@ import {
   FaUser,
   FaTags,
   FaCamera,
+  FaMoneyBillWave,
 } from 'react-icons/fa';
 import '../CompanyManagement/ReactBootstrapTable.scss';
 import { toast, ToastContainer } from 'react-toastify';
@@ -26,7 +27,7 @@ import 'react-toastify/dist/ReactToastify.css';
 import CompanyService from '../../services/CompanyService';
 import CompanyCategoryService from '../../services/CompanyCategoryService';
 import FileUploadService from '../../services/FileUploadService';
-import { getEntityId, getUserRole } from '../localStorageUtil';
+import { getEntityId, getUserRole, getCurrencySymbol } from '../localStorageUtil';
 
 const CompanyDetails = () => {
   const companyId = getEntityId();
@@ -375,6 +376,19 @@ const CompanyDetails = () => {
                       <div className="mb-3">
                         <label className="text-muted small d-block">Sub Category</label>
                         <p className="mb-0 fw-bold">{subCategoryName || 'N/A'}</p>
+                      </div>
+                    </Col>
+                  </Row>
+                  <Row>
+                    <Col md={6}>
+                      <div className="mb-3">
+                        <label className="text-muted small d-block">
+                          <FaMoneyBillWave className="me-1" />
+                          Currency
+                        </label>
+                        <p className="mb-0 fw-bold">
+                          {companyData.currency || 'INR'} ({getCurrencySymbol(companyData.currency || 'INR')})
+                        </p>
                       </div>
                     </Col>
                   </Row>

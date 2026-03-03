@@ -2,11 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { Row, Col, Card, CardBody } from 'reactstrap';
 import { Link } from 'react-router-dom';
 import PurchaseOrderService from '../../services/PurchaseOrderService';
-import { getEntityId } from '../localStorageUtil';
+import SupplierService from '../../services/SupplierService';
+import { getEntityId, formatCurrency } from '../localStorageUtil';
 import { CartConstant } from '../../constant/CartConstant';
 
 const ProgressCards = () => {
   const [purchaseOrders, setPurchaseOrders] = useState([]);
+  const [supplierCurrency, setSupplierCurrency] = useState('USD');
   const supplierId = getEntityId();
 
   useEffect(() => {
@@ -20,12 +22,29 @@ const ProgressCards = () => {
           ? data
           : [];
         setPurchaseOrders(list);
+        // Get supplier currency from first order if available
+        if (list.length > 0) {
+          const currency = list[0].originalCurrencyCode || list[0].supplier?.currency || list[0].currencyCode || 'USD';
+          setSupplierCurrency(currency);
+        }
       } catch (error) {
         console.error('Failed to fetch purchase orders:', error);
       }
     };
 
+    const fetchSupplierCurrency = async () => {
+      try {
+        const response = await SupplierService.getSupplierById(supplierId);
+        if (response?.data?.currency) {
+          setSupplierCurrency(response.data.currency);
+        }
+      } catch (error) {
+        console.error('Failed to fetch supplier currency:', error);
+      }
+    };
+
     fetchPurchaseOrders();
+    fetchSupplierCurrency();
   }, [supplierId]);
 
   const calculateTotalAmountByStatus = (statuses) => {
@@ -33,7 +52,13 @@ const ProgressCards = () => {
     const ordersArray = Array.isArray(purchaseOrders) ? purchaseOrders : [];
     return ordersArray
       .filter((order) => statusArray.includes(order.orderStatus?.toUpperCase()))
-      .reduce((total, order) => total + order.orderTotal, 0);
+      .reduce((total, order) => {
+        // Use original order amount (supplier's currency) if available
+        const amount = order.originalOrderAmount !== undefined && order.originalOrderAmount !== null
+          ? order.originalOrderAmount
+          : order.orderTotal || 0;
+        return total + amount;
+      }, 0);
   };
 
   const calculateCountByStatus = (statuses) => {
@@ -45,6 +70,11 @@ const ProgressCards = () => {
   };
 
   const formatAmount = (value) => {
+    // Format with supplier currency
+    return formatCurrency(value, supplierCurrency);
+  };
+
+  const formatAmountShort = (value) => {
     if (value >= 1e7) {
       return `${(value / 1e7).toFixed(1)}Cr`;
     }
@@ -54,7 +84,7 @@ const ProgressCards = () => {
     if (value >= 1e3) {
       return `${(value / 1e3).toFixed(1)}K`;
     }
-    return value.toFixed(2);
+    return formatCurrency(value, supplierCurrency);
   };
 
   const progressCardData = [
@@ -149,10 +179,10 @@ const ProgressCards = () => {
                 </div>
                 <div className="d-flex justify-content-between align-items-end">
                   <div>
-                    <h3 className="mb-0 fw-bold" style={{ color: data.bgColor }}>
-                      {formatAmount(amount)}
+                    <h3 className="mb-0 fw-bold" style={{ color: data.bgColor, fontSize: '1.25rem' }}>
+                      {formatAmountShort(amount)}
                     </h3>
-                    <small className="text-muted">Total Value</small>
+                    <small className="text-muted">Total Value ({supplierCurrency})</small>
                   </div>
                   <div className="text-end">
                     <Link

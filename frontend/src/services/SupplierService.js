@@ -113,6 +113,18 @@ const SupplierService = {
   getConnectedSuppliersForBuyer(companyId) {
     return apiClient.get(`ep/v1/company/${companyId}/supplierConnected`);
   },
+
+  // Admin: Get supplier metrics (companies, orders, rfqs, catalogs counts)
+  getSupplierMetrics(supplierId) {
+    return apiClient.get(`ep/v1/admin/supplier/${supplierId}/metrics`);
+  },
+
+  // Admin: Get supplier company transactions with order and RFQ counts
+  getSupplierCompanyTransactions(supplierId, page = 0, size = 10) {
+    return apiClient.get(`ep/v1/admin/supplier/${supplierId}/company-transactions`, {
+      params: { page, size },
+    });
+  },
 };
 
 export default SupplierService;

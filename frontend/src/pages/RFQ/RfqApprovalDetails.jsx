@@ -51,7 +51,8 @@ import * as Yup from 'yup';
 import ComponentCard from '../../components/ComponentCard';
 import FileUploadService from '../../services/FileUploadService';
 import RqfService from '../../services/RfqService';
-import { getEntityId, formatDate, getUserId } from '../localStorageUtil';
+import { getEntityId, formatDate, getUserId, getCompanyCurrency } from '../localStorageUtil';
+import { formatCurrency, getCurrencySymbol, formatDualCurrency, getExchangeRate } from '../../utils/currencyUtils';
 import '../CompanyManagement/ReactBootstrapTable.scss';
 import SupplierService from '../../services/SupplierService';
 import RfqApprovalService from '../../services/RfqApprovalService';
@@ -94,6 +95,17 @@ const RfqApprovalDetails = () => {
   const [notesError, setNotesError] = useState('');
   const [showAttachmentsModal, setShowAttachmentsModal] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
+
+  // Currency conversion state
+  const companyCurrency = getCompanyCurrency();
+  const [exchangeRates, setExchangeRates] = useState({});
+
+  // Helper function to convert amount to company currency
+  const convertToCompanyCurrency = (amount, fromCurrency) => {
+    if (!fromCurrency || fromCurrency === companyCurrency) return amount;
+    const rate = exchangeRates[fromCurrency] || 1;
+    return amount * rate;
+  };
 
   const commentSchema = Yup.object().shape({
     notes: Yup.string().required('Notes are required'),
@@ -499,6 +511,41 @@ const RfqApprovalDetails = () => {
     fetchRfqAndSuppliers();
   }, [rfqId]);
 
+  // Fetch exchange rates for all supplier currencies
+  useEffect(() => {
+    const fetchExchangeRates = async () => {
+      if (!suppliersWithDetails.length) return;
+
+      const currencies = [...new Set(
+        suppliersWithDetails
+          .map(s => s.supplierCurrency)
+          .filter(Boolean)
+      )];
+
+      if (!currencies.includes(companyCurrency)) {
+        currencies.push(companyCurrency);
+      }
+
+      const rates = { [companyCurrency]: 1 };
+
+      for (const currency of currencies) {
+        if (currency !== companyCurrency) {
+          try {
+            const rate = await getExchangeRate(currency, companyCurrency);
+            rates[currency] = rate;
+          } catch (error) {
+            console.error(`Failed to fetch rate for ${currency}:`, error);
+            rates[currency] = 1;
+          }
+        }
+      }
+
+      setExchangeRates(rates);
+    };
+
+    fetchExchangeRates();
+  }, [suppliersWithDetails, companyCurrency]);
+
   const getStatusBadge = (status) => {
     const colors = {
       draft: 'secondary',
@@ -550,20 +597,29 @@ const RfqApprovalDetails = () => {
     );
   };
 
+  // Get supplier total - returns both original and converted amounts
   const getSupplierTotal = (supplier) => {
-    if (supplier.supplierStatus === 'not_selected') return 0;
+    if (supplier.supplierStatus === 'not_selected') return { original: 0, converted: 0 };
+    const supplierCurrency = supplier.supplierCurrency || 'USD';
     // Only sum items that are selected/ordered from this supplier
-    return (supplier.responseItems || []).reduce((sum, item) => {
+    const originalTotal = (supplier.responseItems || []).reduce((sum, item) => {
       if (!isItemSelectedFromSupplier(supplier, item.rfqItemId)) return sum;
       const rfqItem = getRfqItemById(item.rfqItemId);
       const qty = rfqItem?.quantity || 0;
       const price = item.unitPrice || 0;
       return sum + price * qty;
     }, 0);
+
+    const convertedTotal = convertToCompanyCurrency(originalTotal, supplierCurrency);
+    return { original: originalTotal, converted: convertedTotal, currency: supplierCurrency };
   };
 
+  // Get overall total in company currency (for fair comparison across suppliers)
   const getOverallTotal = () => {
-    return suppliersWithDetails.reduce((sum, supplier) => sum + getSupplierTotal(supplier), 0);
+    return suppliersWithDetails.reduce((sum, supplier) => {
+      const totals = getSupplierTotal(supplier);
+      return sum + totals.converted;
+    }, 0);
   };
 
   const formatDateTime = (date) => {
@@ -618,7 +674,7 @@ const RfqApprovalDetails = () => {
               <Package size={13} /> {totalItems} Items
             </span>
             <span className="rfq-inline-stat">
-              <DollarSign size={13} /> ${overallTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              <DollarSign size={13} /> {formatCurrency(overallTotal, companyCurrency)}
             </span>
             <span className="rfq-inline-stat">
               <Calendar size={13} /> Required By: {formatDate(rfqData.requiredAt)}
@@ -941,7 +997,15 @@ const RfqApprovalDetails = () => {
             )}
           </div>
           <div className="rfq-supplier-total-sm">
-            ${supplierTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            {supplierTotal.currency !== companyCurrency && supplierTotal.original > 0
+              ? formatDualCurrency({
+                  originalPrice: supplierTotal.original,
+                  originalCurrency: supplierTotal.currency,
+                  convertedPrice: supplierTotal.converted,
+                  convertedCurrency: companyCurrency,
+                }, 'supplier')
+              : formatCurrency(supplierTotal.original, supplierTotal.currency || 'USD')
+            }
           </div>
         </div>
 
@@ -955,7 +1019,7 @@ const RfqApprovalDetails = () => {
                   <th>Description</th>
                   <th className="text-center">Qty</th>
                   <th className="text-center">UOM</th>
-                  <th className="text-end">Unit Price</th>
+                  <th className="text-end">Unit Price ({getCurrencySymbol(supplier.supplierCurrency || 'USD')})</th>
                   <th className="text-end">Total</th>
                   <th className="text-center">Status</th>
                 </tr>
@@ -966,8 +1030,15 @@ const RfqApprovalDetails = () => {
                   // Item is ordered if supplier is selected AND this specific item is selected from this supplier
                   const isOrdered = isSupplierSelected && isItemSelectedFromSupplier(supplier, rfqItem.rfqItemId);
                   const unitPrice = responseItem?.unitPrice;
+                  const supplierCurrency = supplier.supplierCurrency || 'USD';
                   const totalPrice = unitPrice != null && rfqItem.quantity
-                    ? (unitPrice * rfqItem.quantity).toFixed(2)
+                    ? unitPrice * rfqItem.quantity
+                    : null;
+                  const convertedUnitPrice = unitPrice != null
+                    ? convertToCompanyCurrency(unitPrice, supplierCurrency)
+                    : null;
+                  const convertedTotalPrice = totalPrice != null
+                    ? convertToCompanyCurrency(totalPrice, supplierCurrency)
                     : null;
 
                   return (
@@ -982,10 +1053,28 @@ const RfqApprovalDetails = () => {
                       <td className="text-center">{rfqItem.quantity || 'N/A'}</td>
                       <td className="text-center">{rfqItem.uom || 'N/A'}</td>
                       <td className="text-end">
-                        {unitPrice != null ? `$${unitPrice.toFixed(2)}` : '\u2014'}
+                        {unitPrice != null
+                          ? supplierCurrency !== companyCurrency
+                            ? formatDualCurrency({
+                                originalPrice: unitPrice,
+                                originalCurrency: supplierCurrency,
+                                convertedPrice: convertedUnitPrice,
+                                convertedCurrency: companyCurrency,
+                              }, 'supplier')
+                            : formatCurrency(unitPrice, supplierCurrency)
+                          : '\u2014'}
                       </td>
                       <td className="text-end fw-semibold">
-                        {isOrdered && totalPrice != null ? `$${totalPrice}` : '\u2014'}
+                        {isOrdered && totalPrice != null
+                          ? supplierCurrency !== companyCurrency
+                            ? formatDualCurrency({
+                                originalPrice: totalPrice,
+                                originalCurrency: supplierCurrency,
+                                convertedPrice: convertedTotalPrice,
+                                convertedCurrency: companyCurrency,
+                              }, 'supplier')
+                            : formatCurrency(totalPrice, supplierCurrency)
+                          : '\u2014'}
                       </td>
                       <td className="text-center">
                         {isOrdered ? (
@@ -1009,7 +1098,15 @@ const RfqApprovalDetails = () => {
                     Subtotal ({orderedCount} item{orderedCount !== 1 ? 's' : ''}):
                   </td>
                   <td className="text-center fw-bold" style={{ fontSize: '14px', color: '#009efb' }}>
-                    ${supplierTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {supplierTotal.currency !== companyCurrency && supplierTotal.original > 0
+                      ? formatDualCurrency({
+                          originalPrice: supplierTotal.original,
+                          originalCurrency: supplierTotal.currency,
+                          convertedPrice: supplierTotal.converted,
+                          convertedCurrency: companyCurrency,
+                        }, 'supplier')
+                      : formatCurrency(supplierTotal.original, supplierTotal.currency || 'USD')
+                    }
                   </td>
                 </tr>
               </tfoot>

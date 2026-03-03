@@ -46,7 +46,7 @@ import CartService from '../../services/CartService';
 import RfqService from '../../services/RfqService';
 import PurchaseOrderService from '../../services/PurchaseOrderService';
 import FileUploadService from '../../services/FileUploadService';
-import { getEntityId } from '../localStorageUtil';
+import { getEntityId, formatCurrency } from '../localStorageUtil';
 
 const PAGE_SIZE = 10;
 
@@ -321,13 +321,6 @@ const SupplierDetail = () => {
     });
   };
 
-  const formatCurrency = (amount, currency = 'USD') => {
-    if (amount === null || amount === undefined) return 'N/A';
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: currency || 'USD',
-    }).format(amount);
-  };
 
   const getStatusBadgeColor = (status) => {
     const statusLower = (status || '').toLowerCase();

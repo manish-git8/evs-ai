@@ -214,6 +214,14 @@ const PurchaseOrderService = {
     );
   },
 
+  // Update PO header (e.g., total amount) - uses PUT as per backend API spec
+  updatePurchaseOrder(companyId, purchaseOrderId, requestBody) {
+    return apiClient.put(
+      `ep/v1/company/${companyId}/purchaseOrder/${purchaseOrderId}`,
+      requestBody,
+    );
+  },
+
   getPurchaseOrderAudits(companyId, purchaseOrderId, pageNumber = 0, pageSize = 10) {
     return apiClient.get(`ep/v1/companies/${companyId}/purchase-orders/${purchaseOrderId}/audits`, {
       params: { pageNumber, pageSize },
@@ -287,6 +295,22 @@ const PurchaseOrderService = {
       itemIds,
       newUserId,
     });
+  },
+
+  /**
+   * Confirm purchase order by company user (for draft/internal suppliers only).
+   * This allows company users to mark confirmation for orders that don't have
+   * actual external suppliers to confirm.
+   * @param {number} companyId - Company ID
+   * @param {number} purchaseOrderId - Purchase Order ID
+   * @param {object} data - Confirmation data with orderItemDetails
+   * @returns {Promise} API response
+   */
+  confirmPurchaseOrderAsCompany(companyId, purchaseOrderId, data) {
+    return apiClient.post(
+      `ep/v1/company/${companyId}/purchase-order/${purchaseOrderId}/confirmation`,
+      data,
+    );
   },
 };
 

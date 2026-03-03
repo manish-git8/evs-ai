@@ -692,13 +692,13 @@ async def _check_item_status(entity, target_id, token, company_id, user_id=None)
         # Priority 1: approval queue — authoritative for approve/reject actions
         q_status, q_found, q_id, q_signoff_id, q_rfq_signoff_user_id = _extract_info(queue_result, entity, target_id) if queue_result else (None, False, None, None, None)
         if q_found:
-            logger.info(f"[CHECK-STATUS] Exact match in approval queue: status={q_status} id={q_id} signoff_id={q_signoff_id} rfq_signoff_user_id={q_rfq_signoff_user_id}")
+            logger.debug(f"[check-status] queue match: status={q_status} id={q_id}")
             return q_status, True, q_id, True, q_signoff_id, q_rfq_signoff_user_id
 
         # Priority 2: general list — item exists but NOT in user's queue
         g_status, g_found, g_id, g_signoff_id, g_rfq_signoff_user_id = _extract_info(general_result, entity, target_id) if general_result else (None, False, None, None, None)
         if g_found:
-            logger.info(f"[CHECK-STATUS] Exact match in general list only: status={g_status} id={g_id}")
+            logger.debug(f"[check-status] general list match: status={g_status} id={g_id}")
             return g_status, True, g_id, False, g_signoff_id, g_rfq_signoff_user_id
 
         # Priority 3 (RFQ only): retry general search with RFQ-{id} prefix format
@@ -707,7 +707,7 @@ async def _check_item_status(entity, target_id, token, company_id, user_id=None)
                 general_retry = await get_rfqs_paginated(token, company_id, page=1, search=f"RFQ-{target_id}")
                 g2_status, g2_found, g2_id, g2_signoff_id, g2_rfq_signoff_user_id = _extract_info(general_retry, entity, target_id)
                 if g2_found:
-                    logger.info(f"[CHECK-STATUS] Found RFQ via RFQ-{target_id} search: status={g2_status} id={g2_id}")
+                    logger.debug(f"[check-status] RFQ found via prefix: status={g2_status} id={g2_id}")
                     return g2_status, True, g2_id, False, g2_signoff_id, g2_rfq_signoff_user_id
             except Exception:
                 pass
@@ -736,7 +736,7 @@ async def _do_approve(entity, target_id, token, company_id, user_id, first_name,
             real_rfq_signoff_user_id = sd.get("rfqSignOffUserId") or rfq_signoff_user_id
             if not real_signoff_id:
                 return _error_response("Cannot approve RFQ: could not retrieve signoff data. Please try again.")
-            logger.info(f"[DO-APPROVE-RFQ] rfqId={target_id} signoff_id={real_signoff_id} rfqSignOffUserId={real_rfq_signoff_user_id}")
+            logger.debug(f"[do-approve-rfq] rfqId={target_id} signoff_id={real_signoff_id}")
             await approve_rfq(token, company_id, target_id, real_signoff_id, user_id, first_name,
                               signoff_data=sd)
             await broadcast_cart_update({"type": "rfq_approved", "rfq_id": target_id})
@@ -768,7 +768,7 @@ async def _do_reject(entity, target_id, token, company_id, user_id, first_name, 
             real_rfq_signoff_user_id = sd.get("rfqSignOffUserId") or rfq_signoff_user_id
             if not real_signoff_id:
                 return _error_response("Cannot reject RFQ: could not retrieve signoff data. Please try again.")
-            logger.info(f"[DO-REJECT-RFQ] rfqId={target_id} signoff_id={real_signoff_id} rfqSignOffUserId={real_rfq_signoff_user_id}")
+            logger.debug(f"[do-reject-rfq] rfqId={target_id} signoff_id={real_signoff_id}")
             await reject_rfq(token, company_id, target_id, real_signoff_id, user_id, first_name, reason,
                              signoff_data=sd)
             await broadcast_cart_update({"type": "rfq_rejected", "rfq_id": target_id})
@@ -817,7 +817,7 @@ async def chat_endpoint(request: Request, message: Message):
             entity = "po"
             intent["entity"] = "po"
 
-    logger.info(f"[Chat] session={session_id} text='{text}' intent={intent}")
+    logger.debug(f"[Chat] session={session_id} intent={intent}")
 
     # ── Auth guard ──
     if not token:
@@ -850,7 +850,7 @@ async def chat_endpoint(request: Request, message: Message):
                     btn_entity, "approve", token, company_id, str(user_id), 1, "", session
                 )
             except (ProcurementAPIError, Exception) as e:
-                logger.warning(f"[BTN-APPROVE_REJECT] Error: {e}")
+                logger.warning(f"[approve_reject] Error: {e}")
                 return _error_response("Failed to fetch items. Please try again.")
         return _menu_response()
 
@@ -875,7 +875,7 @@ async def chat_endpoint(request: Request, message: Message):
             _, filter_entity, _ = parts
             # Use original-case status from the button ID
             filter_status = orig_parts[2] if len(orig_parts) == 3 else parts[2].upper()
-            print(f"[STATUS_FILTER HANDLER] entity={filter_entity}, status={filter_status}", flush=True)
+            logger.debug(f"[status_filter] entity={filter_entity}, status={filter_status}")
             session["menu"] = filter_entity
             session["submenu"] = "status"
             session["status_filter"] = filter_status
@@ -987,7 +987,7 @@ async def chat_endpoint(request: Request, message: Message):
                         f"**{matched_status_phrase.title()}** is not a valid status for {entity_labels.get(detected_entity, detected_entity.upper())}s."
                     )
 
-                logger.info(f"[STATUS-NLP] Detected: entity={detected_entity} status={api_status} from text='{text}'")
+                logger.debug(f"[status-nlp] entity={detected_entity} status={api_status}")
                 session["menu"] = detected_entity
                 session["submenu"] = "status"
                 session["status_filter"] = api_status
@@ -1050,7 +1050,7 @@ async def chat_endpoint(request: Request, message: Message):
             try:
                 # Use internal_id for the API call (may differ from the display number the user typed)
                 api_id = cd.get("internal_id") or cd["target_id"]
-                logger.info(f"[CONFIRM-FLOW] action={ca} display_id={cd['target_id']}  api_id={api_id}")
+                logger.debug(f"[confirm-flow] action={ca} api_id={api_id}")
                 if ca == "approve":
                     return await _do_approve(
                         cd["entity"], api_id, token, company_id,
@@ -1077,7 +1077,7 @@ async def chat_endpoint(request: Request, message: Message):
                 err_str = str(e)
                 entity_label = {"cart": "Cart", "po": "PO", "rfq": "RFQ"}.get(cd.get("entity", ""), "Item")
                 show_id = cd.get("target_id", "")
-                logger.error(f"[CONFIRM-FLOW] API error for {entity_label} {show_id}: {err_str}")
+                logger.error(f"[confirm-flow] API error for {entity_label} {show_id}: {err_str}")
                 if "400" in err_str.lower() or "bad request" in err_str.lower():
                     return _text_response(
                         f"Could not {ca} {entity_label} **{show_id}**.\n\n"
@@ -1149,7 +1149,7 @@ async def chat_endpoint(request: Request, message: Message):
         if resolved_id and session.get("submenu") in ("approve", "reject"):
             context_action = session["submenu"]  # 'approve' or 'reject'
             context_entity = session.get("menu") or entity
-            logger.info(f"[NAVIGATE-REDIRECT] Redirecting '{text}' to {context_action} {context_entity} {resolved_id}")
+            logger.debug(f"[navigate-redirect] to {context_action} {context_entity} {resolved_id}")
             # Fall through to Section 6 by overriding action
             action = context_action
             entity = context_entity
@@ -1158,7 +1158,7 @@ async def chat_endpoint(request: Request, message: Message):
             # Don't return — fall through to Section 6 below
         elif resolved_id and entity in ("cart", "po", "rfq"):
             # ── User typed "cart 1475" / "po 123" / "rfq 45" → show detail view directly ──
-            logger.info(f"[NAVIGATE-DETAIL] Redirecting '{text}' to detail view for {entity} {resolved_id}")
+            logger.debug(f"[navigate-detail] {entity} {resolved_id}")
             try:
                 result = await _try_fetch_detail(entity, resolved_id, token, company_id)
                 if result:
@@ -1314,7 +1314,7 @@ async def chat_endpoint(request: Request, message: Message):
         status, found, internal_id, in_queue, signoff_id, rfq_signoff_user_id = await _check_item_status(
             target_entity, target_id, token, company_id, user_id=user_id
         )
-        logger.info(f"[APPROVE/REJECT] target_id={target_id}  internal_id={internal_id}  status={status}  found={found}  in_queue={in_queue}  signoff_id={signoff_id}  rfq_signoff_user_id={rfq_signoff_user_id}")
+        logger.debug(f"[approve/reject] target_id={target_id} status={status} found={found} in_queue={in_queue}")
 
         if not found:
             return _text_response(

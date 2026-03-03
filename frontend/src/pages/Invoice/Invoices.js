@@ -8,8 +8,11 @@ import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import Swal from 'sweetalert2';
 import '../CompanyManagement/ReactBootstrapTable.scss';
-import { formatDate, getEntityId } from '../localStorageUtil';
+import { formatDate, getEntityId, formatCurrency } from '../localStorageUtil';
+import { formatDualCurrency, getExchangeRate } from '../../utils/currencyUtils';
 import InvoiceService from '../../services/InvoiceService';
+import SupplierService from '../../services/SupplierService';
+import CompanyService from '../../services/CompanyService';
 
 const Invoices = () => {
   const companyId = getEntityId();
@@ -23,8 +26,26 @@ const Invoices = () => {
   const [loading, setLoading] = useState(false);
   const [sortBy, setSortBy] = useState('createdDate');
   const [sortOrder, setSortOrder] = useState('desc');
+  const [supplierCurrency, setSupplierCurrency] = useState('USD');
+  const [exchangeRates, setExchangeRates] = useState({});
+  const [companyCurrencies, setCompanyCurrencies] = useState({});
 
   const pageSize = 10;
+
+  // Fetch supplier info to get currency
+  useEffect(() => {
+    const fetchSupplierCurrency = async () => {
+      try {
+        const response = await SupplierService.getSupplierById(supplierId);
+        if (response?.data?.currency) {
+          setSupplierCurrency(response.data.currency);
+        }
+      } catch (error) {
+        console.error('Error fetching supplier currency:', error);
+      }
+    };
+    fetchSupplierCurrency();
+  }, [supplierId]);
 
   const fetchAllInvoices = async (pageNumber = 0) => {
     try {
@@ -61,6 +82,13 @@ const Invoices = () => {
 
       const invoiceList = response?.data?.content || response?.data || [];
 
+      // Debug: Log first invoice to see available fields
+      if (invoiceList.length > 0) {
+        console.log('First invoice data:', JSON.stringify(invoiceList[0], null, 2));
+        console.log('companyId:', invoiceList[0]?.companyId);
+        console.log('supplier:', invoiceList[0]?.supplier);
+      }
+
       if (Array.isArray(invoiceList) && invoiceList.length > 0) {
         const mappedData = invoiceList.map((invoice) => ({
           invoiceId: invoice.invoiceId,
@@ -75,6 +103,10 @@ const Invoices = () => {
           invoiceDate: invoice.dateOfIssue,
           createdDate: invoice.createdDate,
           status: invoice.status || 'PENDING',
+          // Currency fields for dual currency display
+          supplierCurrency: invoice.supplier?.currency || invoice.currency || invoice.currencyCode || 'USD',
+          companyCurrency: invoice.company?.currency || invoice.convertedCurrencyCode || 'USD',
+          convertedAmount: invoice.convertedTotalAmountDue,
           fullInvoiceData: invoice,
         }));
 
@@ -101,6 +133,96 @@ const Invoices = () => {
     setCurrentPage(0);
     fetchAllInvoices(0);
   }, [debouncedSearchTerm]);
+
+  // Fetch company currencies and exchange rates
+  useEffect(() => {
+    const fetchCompanyCurrenciesAndRates = async () => {
+      if (invoiceData.length === 0 || !supplierCurrency) return;
+
+      // Get unique company IDs from invoices (companyId is a direct field in InvoiceDto)
+      const uniqueCompanyIds = [...new Set(
+        invoiceData
+          .map(inv => inv.fullInvoiceData?.companyId)
+          .filter(Boolean)
+      )];
+
+      console.log('Supplier currency:', supplierCurrency);
+      console.log('Unique company IDs:', uniqueCompanyIds);
+
+      // Fetch company currencies for unique company IDs that we haven't fetched yet
+      const currencies = { ...companyCurrencies };
+      let hasNewCurrencies = false;
+      for (const companyId of uniqueCompanyIds) {
+        if (!currencies[companyId]) {
+          try {
+            const response = await CompanyService.getCompanyByCompanyId(companyId);
+            // getCompanyByCompanyId returns an array, so access first element
+            const companyData = Array.isArray(response?.data) ? response.data[0] : response?.data;
+            currencies[companyId] = companyData?.currency || 'USD';
+            console.log('Fetched company currency:', companyId, companyData?.currency);
+            hasNewCurrencies = true;
+          } catch (error) {
+            console.error(`Error fetching currency for company ${companyId}:`, error);
+            currencies[companyId] = 'USD';
+          }
+        }
+      }
+      if (hasNewCurrencies) {
+        setCompanyCurrencies(currencies);
+      }
+
+      // Get all unique company currencies that are different from supplier currency
+      const allCompanyCurrencies = [...new Set(Object.values(currencies))]
+        .filter(currency => currency && currency !== supplierCurrency);
+
+      // Fetch exchange rates for each unique company currency
+      // Clear rates and refetch when supplier currency changes (rates depend on source currency)
+      const rates = {};
+      for (const companyCurrency of allCompanyCurrencies) {
+        try {
+          const rate = await getExchangeRate(supplierCurrency, companyCurrency);
+          rates[companyCurrency] = rate;
+        } catch (error) {
+          console.error(`Error fetching rate for ${companyCurrency}:`, error);
+          rates[companyCurrency] = 1;
+        }
+      }
+      setExchangeRates(rates);
+    };
+
+    fetchCompanyCurrenciesAndRates();
+  }, [invoiceData, supplierCurrency]);
+
+  // Helper function to format invoice amount with dual currency
+  const formatInvoiceAmount = (row) => {
+    const amount = parseFloat(row.invoiceAmount || 0);
+    const rowSupplierCurrency = supplierCurrency || 'USD';
+
+    // Get company currency from fetched currencies map (companyId is a direct field in InvoiceDto)
+    const companyId = row.fullInvoiceData?.companyId;
+    const rowCompanyCurrency = companyId && companyCurrencies[companyId]
+      ? companyCurrencies[companyId]
+      : 'USD';
+
+    // If same currency, show single currency
+    if (rowSupplierCurrency === rowCompanyCurrency) {
+      return formatCurrency(amount, rowSupplierCurrency);
+    }
+
+    // Get exchange rate for this company currency
+    const rate = exchangeRates[rowCompanyCurrency] || 1;
+    const convertedAmount = row.convertedAmount !== undefined && row.convertedAmount !== null
+      ? row.convertedAmount
+      : amount * rate;
+
+    // Show dual currency: supplier currency first, company currency in brackets
+    return formatDualCurrency({
+      originalPrice: amount,
+      originalCurrency: rowSupplierCurrency,
+      convertedPrice: convertedAmount,
+      convertedCurrency: rowCompanyCurrency,
+    }, 'supplier');
+  };
 
   useEffect(() => {}, [companyId]);
 
@@ -354,8 +476,8 @@ const Invoices = () => {
                       dataField="invoiceAmount"
                       dataAlign="right"
                       headerAlign="right"
-                      dataFormat={(cell) => `$${parseFloat(cell || 0).toFixed(2)}`}
-                      width="12%"
+                      dataFormat={(cell, row) => formatInvoiceAmount(row)}
+                      width="15%"
                       thStyle={{ textAlign: 'right', whiteSpace: 'normal', padding: '8px' }}
                       tdStyle={{
                         textAlign: 'right',

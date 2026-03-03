@@ -10,10 +10,31 @@ $info-color: #17a2b8;
 $border-color: #dee2e6;
 
 // ============================================
+// TABLE CONTAINER - Enable sticky columns
+// ============================================
+
+// Ensure the table-responsive container allows sticky positioning
+.table-responsive:has(.supplier-response-table) {
+  overflow-x: auto;
+  overflow-y: visible;
+
+  // The table needs specific styling for sticky to work
+  .supplier-response-table {
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+}
+
+// ============================================
 // TABLE STYLING ENHANCEMENTS
 // ============================================
 
 .supplier-response-table {
+  // Required for sticky columns to work properly
+  border-collapse: separate !important;
+  border-spacing: 0 !important;
+  table-layout: fixed !important;
+  width: 100% !important;
   // Header styling - inherits from theme, only adds enhancements
   thead {
     th {
@@ -86,7 +107,26 @@ $border-color: #dee2e6;
     z-index: 10 !important;
     background-color: #fff;
     box-sizing: border-box;
-    border-right: 2px solid #dee2e6 !important;
+    border-right: none !important;
+
+    // Use pseudo-element for partition border - stays with sticky column
+    &::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      right: -3px;
+      bottom: 0;
+      width: 3px;
+      background: linear-gradient(180deg, #009efb 0%, #0077cc 100%);
+      box-shadow: 3px 0 6px rgba(0, 0, 0, 0.15);
+      z-index: 11;
+    }
+  }
+
+  // Ensure cells have relative positioning for pseudo-element
+  th.col-req-qty,
+  td.col-req-qty {
+    position: sticky !important;
   }
 
   // Header sticky columns - use project theme color (higher z-index)
@@ -133,56 +173,102 @@ $border-color: #dee2e6;
 
   // Compact supplier columns for better space usage
   th.supplier-header {
-    min-width: 280px;
-    max-width: 320px;
-    font-size: 0.85rem;
-  }
-
-  // Supplier sub-header columns - smaller font than supplier name
-  thead tr:nth-child(2) th:not(.col-part-id):not(.col-description):not(.col-uom):not(.col-req-qty) {
-    font-size: 0.75rem;
-    font-weight: 500;
-    padding: 0.35rem 0.25rem;
+    font-size: 0.72rem;
+    padding: 0.25rem 0.1rem;
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
-  // Supplier body columns
+  // Supplier sub-header columns - very compact with fixed widths
+  thead tr:nth-child(2) th:not(.col-part-id):not(.col-description):not(.col-uom):not(.col-req-qty) {
+    font-size: 0.65rem;
+    font-weight: 500;
+    padding: 0.1rem 0.02rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  // Define column widths using colgroup or direct styling
+  // Checkbox column (select)
+  th.col-select, td.col-select {
+    width: 24px !important;
+    max-width: 24px !important;
+    padding: 0.1rem 0 !important;
+  }
+
+  // Unit Price column
+  th.col-unit-price, td.col-unit-price {
+    width: 58px !important;
+    max-width: 65px !important;
+    padding: 0.1rem 0.02rem !important;
+  }
+
+  // Accepted Qty column
+  th.col-accepted-qty, td.col-accepted-qty {
+    width: 45px !important;
+    max-width: 50px !important;
+    padding: 0.1rem 0.02rem !important;
+  }
+
+  // Negotiation column
+  th.col-negotiation, td.col-negotiation {
+    width: 32px !important;
+    max-width: 36px !important;
+    padding: 0.1rem 0 !important;
+  }
+
+  // Supplier body columns - very compact
   tbody td:not(.col-part-id):not(.col-description):not(.col-uom):not(.col-req-qty) {
-    padding: 0.4rem 0.3rem;
+    padding: 0.1rem 0.02rem;
+    text-align: center;
+
+    input[type="checkbox"] {
+      margin: 0;
+      transform: scale(0.8);
+    }
 
     input.form-control-sm {
-      min-width: 65px;
-      max-width: 85px;
-      padding: 0.2rem 0.35rem;
-      font-size: 0.82rem;
+      width: 100% !important;
+      max-width: 55px !important;
+      padding: 0.08rem 0.1rem;
+      font-size: 0.7rem;
     }
+
+    .btn-sm {
+      padding: 0.02rem 0.15rem;
+      font-size: 0.6rem;
+    }
+  }
+
+  // First column of each supplier group (checkbox with border)
+  tbody td.border-left-thick {
+    width: 24px !important;
+    max-width: 24px !important;
+    padding: 0.1rem 0 !important;
   }
 
   // Enhanced supplier column colors with better contrast
   .supplier-col-0 {
-    background-color: rgba(0, 123, 255, 0.08) !important;
-    border-left-color: rgba(0, 123, 255, 0.3) !important;
+    background-color: rgba(0, 123, 255, 0.06) !important;
   }
   .supplier-col-1 {
-    background-color: rgba(40, 167, 69, 0.08) !important;
-    border-left-color: rgba(40, 167, 69, 0.3) !important;
+    background-color: rgba(40, 167, 69, 0.06) !important;
   }
   .supplier-col-2 {
-    background-color: rgba(255, 193, 7, 0.08) !important;
-    border-left-color: rgba(255, 193, 7, 0.3) !important;
+    background-color: rgba(255, 193, 7, 0.06) !important;
   }
   .supplier-col-3 {
-    background-color: rgba(220, 53, 69, 0.08) !important;
-    border-left-color: rgba(220, 53, 69, 0.3) !important;
+    background-color: rgba(220, 53, 69, 0.06) !important;
   }
   .supplier-col-4 {
-    background-color: rgba(23, 162, 184, 0.08) !important;
-    border-left-color: rgba(23, 162, 184, 0.3) !important;
+    background-color: rgba(23, 162, 184, 0.06) !important;
   }
 
-  // Thick border between suppliers for visual separation
+  // Border between suppliers for visual separation
   .border-left-thick {
-    border-left: 3px solid #dee2e6 !important;
+    border-left: 2px solid #dee2e6 !important;
   }
 
   // Row hover effect
@@ -203,6 +289,55 @@ $border-color: #dee2e6;
       font-weight: 600;
       padding-top: 12px;
       padding-bottom: 12px;
+    }
+  }
+
+  // Total row (Selected Total / Grand Total) - ensure dual currency is fully visible
+  tbody tr.total-row {
+    background-color: #f8f9fa !important;
+    border-top: 2px solid #dee2e6;
+
+    td {
+      white-space: nowrap;
+      font-size: 0.78rem;
+      padding: 0.35rem 0.2rem;
+      vertical-align: middle;
+    }
+
+    // Sticky label cell for total row
+    td.total-label-cell {
+      position: sticky !important;
+      left: 0 !important;
+      z-index: 10 !important;
+      background-color: #f8f9fa !important;
+      font-weight: 600;
+      min-width: 410px; // Match the combined width of first 4 columns
+      border-right: none !important;
+
+      // Use pseudo-element for partition border - stays with sticky column
+      &::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        right: -3px;
+        bottom: 0;
+        width: 3px;
+        background: linear-gradient(180deg, #009efb 0%, #0077cc 100%);
+        box-shadow: 3px 0 6px rgba(0, 0, 0, 0.15);
+        z-index: 11;
+      }
+    }
+
+    // Total amount cells - compact width for dual currency
+    td:not(.total-label-cell) {
+      min-width: 100px;
+      padding: 0.25rem 0.1rem;
+
+      span {
+        display: inline-block;
+        white-space: nowrap;
+        font-size: 0.72rem;
+      }
     }
   }
 }

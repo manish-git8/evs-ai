@@ -12,7 +12,7 @@ import SupplierCategoryService from '../../services/SupplierCategoryService';
 import '../CompanyManagement/ReactBootstrapTable.scss';
 import { FaSort } from 'react-icons/fa';
 import ComponentCard from '../../components/ComponentCard';
-import { formatDate } from '../localStorageUtil';
+import { formatDate, getCompanyCurrency } from '../localStorageUtil';
 
 const SupplierManagement = () => {
   const navigate = useNavigate();
@@ -454,7 +454,7 @@ const SupplierManagement = () => {
             customerServicePhone: supplier.customerServicePhone || '',
             salesEmail: supplier.salesEmail || supplier.email,
             website: supplier.website || '',
-            currency: supplier.currency || 'USD',
+            currency: supplier.currency || getCompanyCurrency(),
             primaryContact: supplier.primaryContact || '',
             categoryIds: categoryIds,
             subCategoryId: supplier.subCategoryId ? parseInt(supplier.subCategoryId, 10) : '',
@@ -739,13 +739,22 @@ const SupplierManagement = () => {
     );
   };
 
+  const handleRowClick = (row) => {
+    if (!isImportMode && !isUploading && !isProcessingFile) {
+      navigate(`/supplier-management/${row.supplierId}`);
+    }
+  };
+
   const actionsFormatter = (cell, row) => {
     return (
       <div className="d-flex justify-content-center">
         <button
           type="button"
           className="btn btn-sm btn-primary me-2 action-button-edit"
-          onClick={() => handleEdit(row.supplierId)}
+          onClick={(e) => {
+            e.stopPropagation();
+            handleEdit(row.supplierId);
+          }}
           disabled={isUploading || isProcessingFile}
         >
           <Edit size={16} />
@@ -753,7 +762,10 @@ const SupplierManagement = () => {
         <button
           type="button"
           className="btn btn-sm btn-danger action-button-delete"
-          onClick={() => handleDelete(row.supplierId)}
+          onClick={(e) => {
+            e.stopPropagation();
+            handleDelete(row.supplierId);
+          }}
           disabled={isUploading || isProcessingFile}
         >
           <Trash size={14} />
@@ -806,6 +818,7 @@ const SupplierManagement = () => {
     hideSizePerPage: true,
     paginationPosition: 'bottom',
     onSortChange: onSortChange,
+    onRowClick: handleRowClick,
   };
 
   const importOptions = {
@@ -1056,6 +1069,7 @@ const SupplierManagement = () => {
                   options={options}
                   tableHeaderClass="mb-0"
                   tableStyle={{ width: '100%', tableLayout: 'fixed' }}
+                  containerClass="clickable-rows"
                 >
                   <TableHeaderColumn
                     isKey

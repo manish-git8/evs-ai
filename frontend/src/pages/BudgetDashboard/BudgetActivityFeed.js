@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import PropTypes from 'prop-types';
 import { Badge } from 'reactstrap';
 import BudgetService from '../../services/BudgetService';
-import { getEntityId } from '../localStorageUtil';
+import { getEntityId, formatCurrency } from '../localStorageUtil';
 
 const BudgetActivityFeed = ({ maxItems = 10, initialActivities = [], onRefresh }) => {
   const [activities, setActivities] = useState(initialActivities);
@@ -203,10 +203,7 @@ const BudgetActivityFeed = ({ maxItems = 10, initialActivities = [], onRefresh }
                       activity.activityType === 'ORDER_PLACED' ? 'text-success fw-bold' : 'text-muted'
                     }`}>
                       {activity.activityType === 'ORDER_PLACED' ? 'Consumed: ' : 'Amount: '}
-                      {new Intl.NumberFormat('en-US', {
-                        style: 'currency',
-                        currency: 'USD',
-                      }).format(activity.amount)}
+                      {formatCurrency(activity.amount)}
                     </span>
                   )}
                 </div>

@@ -7,6 +7,8 @@ import { Formik, Form, ErrorMessage, Field } from 'formik';
 import * as Yup from 'yup';
 import CompanyService from '../../../services/CompanyService';
 import CompanyCategoryService from '../../../services/CompanyCategoryService';
+import MasterDataService from '../../../services/MasterDataService';
+import { getCurrencyDisplayName } from '../../../utils/currencyUtils';
 
 const Welcome = ({ getStore, updateStore, jumpToStep }) => {
   const { companyId } = useParams();
@@ -25,11 +27,13 @@ const Welcome = ({ getStore, updateStore, jumpToStep }) => {
       shippingAddresses: storedData.shippingAddresses || [],
       categoryId: storedData.categoryId || '',
       subCategoryId: storedData.subCategoryId || '',
+      currency: storedData.currency || 'INR',
     };
   });
   const [companyCategory, setCompanyCategory] = useState([]);
   const [companySubCategory, setCompanySubCategory] = useState([]);
   const [filteredCategoryId, setFilteredCategoryId] = useState('');
+  const [currencies, setCurrencies] = useState([]);
 
   useEffect(() => {
     const fetchSubCategories = async () => {
@@ -71,6 +75,7 @@ const Welcome = ({ getStore, updateStore, jumpToStep }) => {
               shippingAddresses: company.shippingAddresses || [],
               categoryId: company.categoryId || '',
               subCategoryId: company.subCategoryId || '',
+              currency: company.currency || 'INR',
             };
             setFormState(fetchedData);
             updateStore(fetchedData);
@@ -96,6 +101,18 @@ const Welcome = ({ getStore, updateStore, jumpToStep }) => {
       }
     };
     fetchCompanyCategory();
+  }, []);
+
+  useEffect(() => {
+    const fetchCurrencies = async () => {
+      try {
+        const response = await MasterDataService.getAllCurrencies();
+        setCurrencies(response.data || []);
+      } catch (error) {
+        console.error('Error fetching currencies:', error);
+      }
+    };
+    fetchCurrencies();
   }, []);
 
   useEffect(() => {
@@ -134,6 +151,7 @@ const Welcome = ({ getStore, updateStore, jumpToStep }) => {
       .nullable(),
     categoryId: Yup.string().required('Category is required'),
     subCategoryId: Yup.string().required('Sub Category is required'),
+    currency: Yup.string().required('Currency is required'),
   });
 
   const handleSave = (values) => {
@@ -377,6 +395,31 @@ const Welcome = ({ getStore, updateStore, jumpToStep }) => {
                       </Field>
                       <ErrorMessage
                         name="subCategoryId"
+                        component="div"
+                        className="invalid-feedback"
+                      />
+                    </div>
+                    <div className="col-md-4">
+                      <Label>
+                        Currency<span className="text-danger">*</span>
+                      </Label>
+                      <Field
+                        as="select"
+                        name="currency"
+                        className={`form-control${
+                          touched.currency && errors.currency ? ' is-invalid' : ''
+                        }`}
+                        value={values.currency || 'INR'}
+                      >
+                        <option value="">Select Currency</option>
+                        {currencies.map((curr) => (
+                          <option key={curr.currencyCode} value={curr.currencyCode}>
+                            {curr.currencyCode} ({curr.symbol})
+                          </option>
+                        ))}
+                      </Field>
+                      <ErrorMessage
+                        name="currency"
                         component="div"
                         className="invalid-feedback"
                       />

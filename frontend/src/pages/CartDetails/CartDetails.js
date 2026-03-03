@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useMemo } from 'react';
+import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import {
   Row,
   Col,
@@ -36,7 +36,17 @@ import {
   getUserName,
   parseQueries,
   getExtensionFromContentType,
+  formatCurrency,
+  getCompanyCurrency,
+  getCurrencySymbol,
 } from '../localStorageUtil';
+import {
+  formatDualCurrency,
+  formatDualCurrencyTotal,
+  getUserType,
+  buildPriceData,
+  convertCurrency,
+} from '../../utils/currencyUtils';
 import ApprovalPolicyManagementService from '../../services/ApprovalPolicyManagementService';
 import { computeDefaultsMap } from '../../utils/autoDefaults';
 import ApproverService from '../../services/ApproverService';
@@ -47,6 +57,7 @@ import FileUploadService from '../../services/FileUploadService';
 import ClassService from '../../services/ClassService';
 import ProjectService from '../../services/ProjectService';
 import CatalogItemService from '../../services/CatalogItemService';
+import InternalItemService from '../../services/InternalItemService';
 import PurchaseOrderService from '../../services/PurchaseOrderService';
 import AddressService from '../../services/AddressService';
 import { autoSelectSingleOption } from '../../utils/autoDefaults';
@@ -126,25 +137,103 @@ const CartDetails = () => {
   const [filteredGlAccounts, setFilteredGlAccounts] = useState([]);
   const [manualModalOpen, setManualModalOpen] = useState(false);
   const [manualModalData, setManualModalData] = useState(null);
+  // Accordion state for supplier cards - tracks which suppliers are expanded
+  const [expandedSuppliers, setExpandedSuppliers] = useState({});
+
+  // Toggle individual supplier expansion
+  const toggleSupplierExpand = (supplierId) => {
+    setExpandedSuppliers((prev) => ({
+      ...prev,
+      [supplierId]: !prev[supplierId],
+    }));
+  };
+
+  // Expand all suppliers
+  const expandAllSuppliers = (supplierIds) => {
+    const expanded = {};
+    supplierIds.forEach((id) => {
+      expanded[id] = true;
+    });
+    setExpandedSuppliers(expanded);
+  };
+
+  // Collapse all suppliers
+  const collapseAllSuppliers = () => {
+    setExpandedSuppliers({});
+  };
+
+  // Auto-expand if only single supplier, collapse all if multiple suppliers
+  useEffect(() => {
+    if (cartDetails.length > 0) {
+      const supplierIds = [...new Set(cartDetails.map((item) => String(item.supplierId || 'unknown')))];
+      if (supplierIds.length === 1) {
+        // Single supplier - auto expand
+        setExpandedSuppliers({ [supplierIds[0]]: true });
+      } else {
+        // Multiple suppliers - keep collapsed (default)
+        setExpandedSuppliers({});
+      }
+    }
+  }, [cartDetails.length]); // Only run when cart details count changes
 
   const loadPartIdOptions = async (supplierId, inputValue) => {
     if (!supplierId) return [];
-    try {
-      const results = await CatalogItemService.searchCatalogItemsBySupplier(
-        supplierId,
-        inputValue,
-        { pageSize: 50, pageNumber: 0 },
-      );
 
-      const options = results.map((item) => ({
+    // Don't search internal catalog if input is empty (only show on explicit search)
+    const shouldSearchInternal = inputValue && inputValue.trim().length > 0;
+
+    try {
+      // Search supplier catalog, and optionally internal catalog
+      const supplierPromise = CatalogItemService.searchCatalogItemsBySupplier(
+        supplierId,
+        inputValue || '',
+        { pageSize: 50, pageNumber: 0 },
+      ).catch((err) => {
+        console.error('Supplier catalog search failed:', err);
+        return [];
+      });
+
+      const internalPromise = shouldSearchInternal
+        ? InternalItemService.searchInternalItems(companyId, inputValue, 20).catch((err) => {
+            console.error('Internal catalog search failed:', err);
+            return [];
+          })
+        : Promise.resolve([]);
+
+      const [supplierResults, internalResults] = await Promise.all([
+        supplierPromise,
+        internalPromise,
+      ]);
+
+      // Ensure results are arrays
+      const safeSupplierResults = Array.isArray(supplierResults) ? supplierResults : [];
+      const safeInternalResults = Array.isArray(internalResults) ? internalResults : [];
+
+      // Map supplier catalog items
+      const supplierOptions = safeSupplierResults.map((item) => ({
         value: item.PartId,
         label: `${item.PartId} — ${item.Description || ''}`,
         catalogItem: item,
+        isSupplierCatalog: true,
       }));
 
+      // Map internal catalog items with distinct indicator
+      const internalOptions = safeInternalResults.map((item) => ({
+        value: item.partId,
+        label: `${item.partId} — ${item.description || ''}`,
+        internalItem: item,
+        isInternalCatalog: true,
+      }));
+
+      // Combine options, supplier first then internal
+      const options = [...supplierOptions, ...internalOptions];
+
       if (inputValue && inputValue.trim()) {
-        const exactMatch = results.find((item) => item.PartId === inputValue);
-        if (!exactMatch) {
+        // Check if exact match exists in either catalog
+        const exactSupplierMatch = safeSupplierResults.find((item) => item.PartId === inputValue);
+        const exactInternalMatch = safeInternalResults.find((item) => item.partId === inputValue);
+
+        if (!exactSupplierMatch && !exactInternalMatch) {
           options.push({
             value: inputValue,
             label: `Use "${inputValue}" (Part ID)`,
@@ -193,6 +282,7 @@ const CartDetails = () => {
       description,
       price,
       unitOfMeasure,
+      saveToInternalCatalog,
     } = data;
 
     const originalItem = cartDetails.find(
@@ -200,19 +290,33 @@ const CartDetails = () => {
     );
     if (!originalItem) return;
 
-    const updateBody = {
-      ...originalItem,
-      partId,
-      partDescription: description,
-      price: Number(price),
-      unitOfMeasure,
-      catalogItemId: null,
-      isManual: true,
-    };
+    let finalPartId = partId;
 
     try {
+      // Save to internal catalog if requested
+      if (saveToInternalCatalog) {
+        const internalItemData = {
+          description,
+          defaultUom: unitOfMeasure,
+          status: 'ACTIVE',
+        };
+
+        const createdItem = await InternalItemService.createInternalItem(companyId, internalItemData);
+        finalPartId = createdItem.partId; // Use the auto-generated Part ID
+        toast.success(`Product saved to internal catalog with Part ID: ${finalPartId}`);
+      }
+
+      const updateBody = {
+        ...originalItem,
+        partId: finalPartId,
+        partDescription: description,
+        price: Number(price),
+        unitOfMeasure,
+        catalogItemId: null,
+        isManual: true,
+      };
+
       if (cartStatusType === 'DRAFT') {
-        // ✅ Direct save
         await CartService.handleUpdateCartDetails(
           updateBody,
           companyId,
@@ -229,7 +333,7 @@ const CartDetails = () => {
 
         fetchCarts(true);
       } else if (isCartEditable()) {
-        handleLocalFieldChange(cartDetailId, 'partId', partId);
+        handleLocalFieldChange(cartDetailId, 'partId', finalPartId);
         handleLocalFieldChange(cartDetailId, 'partDescription', description);
         handleLocalFieldChange(cartDetailId, 'price', Number(price));
         handleLocalFieldChange(cartDetailId, 'unitOfMeasure', unitOfMeasure);
@@ -257,20 +361,7 @@ const CartDetails = () => {
     setBudgetRefreshKey((prev) => prev + 1);
   };
 
-  const formatCurrency = (amount, currency = 'USD') => {
-    if (amount == null || Number.isNaN(Number(amount))) {
-      return currency === 'USD' ? '$0.00' : `${currency} 0.00`;
-    }
-
-    const formatter = new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency,
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
-
-    return formatter.format(Number(amount));
-  };
+  // formatCurrency is imported from localStorageUtil and uses company currency
 
 
   const formatNeededBy = (value) => {
@@ -372,6 +463,8 @@ const CartDetails = () => {
   const [showConfirmationModal, setShowConfirmationModal] = useState(false);
   const [pendingNavigation, setPendingNavigation] = useState(null);
   const [originalCartAmount, setOriginalCartAmount] = useState(0);
+  // Real-time converted prices for edited items
+  const [convertedPrices, setConvertedPrices] = useState({});
 
   const [onBehalfOfEmail, setOnBehalfOfEmail] = useState('');
 
@@ -632,7 +725,7 @@ const CartDetails = () => {
     cartDetailId,
     partId,
     isManual = false,
-    manualData = null,
+    selectedOption = null,
   ) => {
     try {
       // Get the cart item to find the supplier ID
@@ -651,7 +744,62 @@ const CartDetails = () => {
         return;
       }
 
-      // Existing logic for catalog items (keep this as is)
+      // Handle internal catalog item selection
+      console.log('selectedOption:', selectedOption);
+      console.log('isInternalCatalog:', selectedOption?.isInternalCatalog);
+      console.log('internalItem:', selectedOption?.internalItem);
+
+      if (selectedOption?.isInternalCatalog && selectedOption?.internalItem) {
+        console.log('Handling internal catalog item selection');
+        const internalItem = selectedOption.internalItem;
+        const updateBody = {
+          ...cartDetails.find((x) => x.cartDetailId === cartDetailId),
+          partId: internalItem.partId,
+          partDescription: internalItem.description,
+          price: 0, // Internal items don't have price, user needs to enter
+          qty: internalItem.quantityPerUnit || 1,
+          unitOfMeasure: internalItem.defaultUom || 'Each',
+          catalogItemId: null,
+          isManual: true, // Treated as manual since no catalog item link
+          isInternalItem: true,
+        };
+
+        console.log('updateBody for internal item:', updateBody);
+        console.log('updateBody.qty:', updateBody.qty);
+        console.log('updateBody.price:', updateBody.price);
+        console.log('cartStatusType:', cartStatusType);
+
+        if (cartStatusType === 'DRAFT') {
+          console.log('Updating DRAFT cart with internal item');
+          try {
+            const response = await CartService.handleUpdateCartDetails(updateBody, companyId, cartDetailId, cartId);
+            console.log('API response:', response);
+          } catch (apiError) {
+            console.error('API error:', apiError);
+          }
+          setLocalCartChanges((prev) => {
+            const newChanges = { ...prev };
+            delete newChanges[cartDetailId];
+            setHasUnsavedChanges(Object.keys(newChanges).length > 0);
+            return newChanges;
+          });
+          fetchCarts(true);
+        } else if (isCartEditable()) {
+          handleLocalFieldChange(cartDetailId, 'partId', internalItem.partId);
+          handleLocalFieldChange(cartDetailId, 'partDescription', internalItem.description);
+          handleLocalFieldChange(cartDetailId, 'unitOfMeasure', internalItem.defaultUom || 'Each');
+          handleLocalFieldChange(cartDetailId, 'qty', internalItem.quantityPerUnit || 1);
+          handleLocalFieldChange(cartDetailId, 'price', 0);
+          handleLocalFieldChange(cartDetailId, 'isManual', true);
+          handleLocalFieldChange(cartDetailId, 'catalogItemId', null);
+        } else {
+          await CartService.handleUpdateCartDetails(updateBody, companyId, cartDetailId, cartId);
+          fetchCarts(true);
+        }
+        return;
+      }
+
+      // Existing logic for supplier catalog items
       const results = await CatalogItemService.searchCatalogItemsBySupplier(
         cartItem.supplierId,
         partId,
@@ -825,7 +973,7 @@ const CartDetails = () => {
         price: window.jiproduct?.price || productData.price || 0,
         unitOfMeasure:
           window.jiproduct?.UnitOfMeasurement || productData.UnitOfMeasurement || 'piece', // Match working version
-        currencyCode: 'USD',
+        currencyCode: getCompanyCurrency(),
         internalBuyerQuoteFile: 0,
         priceUpdate: false,
         classId,
@@ -860,7 +1008,7 @@ const CartDetails = () => {
           isCritical: false,
           isSafetyAppReq: false,
           slimit: '',
-          currencyCode: 'USD',
+          currencyCode: getCompanyCurrency(),
           internalBuyerQuoteFile: 0,
           priceUpdate: false,
           productId: 1,
@@ -973,7 +1121,7 @@ const CartDetails = () => {
       qty: 1,
       price: item.UnitPrice,
       unitOfMeasure: 'piece',
-      currencyCode: item.Currency || 'USD',
+      currencyCode: item.Currency || getCompanyCurrency(),
       internalBuyerQuoteFile: 0,
       priceUpdate: false,
       classId: item.classId,
@@ -1599,12 +1747,6 @@ const CartDetails = () => {
     if (!originalItem) return;
 
     setLocalCartChanges((prev) => {
-      const currentChanges = { ...prev };
-
-      if (!currentChanges[cartDetailId]) {
-        currentChanges[cartDetailId] = {};
-      }
-
       const originalValue = originalItem[field];
 
       const isValueReverted =
@@ -1619,23 +1761,65 @@ const CartDetails = () => {
           value.trim() === originalValue.trim());
 
       if (isValueReverted) {
-        delete currentChanges[cartDetailId][field];
+        // Remove the field from the item's changes - create new objects to avoid mutation
+        const prevItemChanges = prev[cartDetailId] || {};
+        const { [field]: _, ...remainingFields } = prevItemChanges;
 
-        if (Object.keys(currentChanges[cartDetailId]).length === 0) {
-          delete currentChanges[cartDetailId];
+        if (Object.keys(remainingFields).length === 0) {
+          // No more changes for this item, remove the item entry entirely
+          const { [cartDetailId]: __, ...remainingItems } = prev;
+          setHasUnsavedChanges(Object.keys(remainingItems).length > 0);
+          return remainingItems;
         }
+
+        // Still have other changes for this item
+        const result = { ...prev, [cartDetailId]: remainingFields };
+        setHasUnsavedChanges(Object.keys(result).length > 0);
+        return result;
       } else {
-        currentChanges[cartDetailId][field] = value;
+        // Add/update the field - create new objects at every level to ensure React detects change
+        const result = {
+          ...prev,
+          [cartDetailId]: {
+            ...(prev[cartDetailId] || {}),
+            [field]: value,
+          },
+        };
+        setHasUnsavedChanges(Object.keys(result).length > 0);
+        return result;
       }
-
-      setHasUnsavedChanges(Object.keys(currentChanges).length > 0);
-
-      return currentChanges;
     });
 
     // Trigger budget refresh when project changes
     if (field === 'projectId') {
       triggerBudgetRefresh();
+    }
+
+    // Trigger real-time currency conversion for price changes
+    if (field === 'price' && value !== '' && !Number.isNaN(parseFloat(value))) {
+      // Determine currencies - use originalCurrencyCode or currencyCode as the source currency
+      const fromCurrency = originalItem.originalCurrencyCode || originalItem.currencyCode || originalItem.supplierCurrency;
+      const toCurrency = originalItem.convertedCurrencyCode || getCompanyCurrency();
+
+      console.log('Currency conversion check:', { fromCurrency, toCurrency, originalItem: originalItem.cartDetailId });
+
+      // Only convert if currencies are different and both are set
+      if (fromCurrency && toCurrency && fromCurrency !== toCurrency) {
+        convertCurrency(parseFloat(value), fromCurrency, toCurrency)
+          .then((result) => {
+            setConvertedPrices((prev) => ({
+              ...prev,
+              [cartDetailId]: {
+                convertedPrice: result.convertedAmount,
+                rate: result.rate,
+                rateDate: result.rateDate,
+              },
+            }));
+          })
+          .catch((error) => {
+            console.error('Currency conversion error:', error);
+          });
+      }
     }
   };
 
@@ -1904,12 +2088,20 @@ const CartDetails = () => {
         if (updatedCartItems.length > 0 && updatedCartItems.some((item) => item.projectId)) {
           try {
             const validationCompanyId = getEntityId();
-            const lineItems = updatedCartItems.map((item) => ({
-              projectId: item.projectId || null,
-              amount: parseFloat(item.totalPrice || 0),
-              description: item.description || 'Cart item',
-              glAccountId: item.glAccountId || null,
-            }));
+            const lineItems = updatedCartItems.map((item) => {
+              // Use converted price (company currency) for budget validation
+              const qty = item.quantity || item.qty || 1;
+              const realtimeConverted = convertedPrices[item.cartDetailId];
+              // Use realtime conversion if available, otherwise stored converted price or original
+              const unitPrice = realtimeConverted?.convertedPrice ?? item.convertedPrice ?? item.unitPrice ?? item.price ?? 0;
+              const amount = qty * unitPrice;
+              return {
+                projectId: item.projectId || null,
+                amount: parseFloat(amount || 0),
+                description: item.partDescription || item.description || item.catalogItemId?.Description || `Part: ${item.partId || 'N/A'}`,
+                glAccountId: item.glAccountId || null,
+              };
+            });
 
 
             const validLineItems = lineItems.filter((item) => item.projectId);
@@ -1943,9 +2135,11 @@ const CartDetails = () => {
 
                 const updatedMemoizedCartItems = updatedCartItems.map((item) => {
                   const quantity = item.quantity || item.qty || 1;
-                  const unitPrice = item.unitPrice || item.price || 0;
-                  const totalPrice =
-                    item.totalPrice || item.lineTotal || item.extendedPrice || quantity * unitPrice;
+                  // Use converted price (company currency) for budget validation
+                  const realtimeConverted = convertedPrices[item.cartDetailId];
+                  // Use realtime conversion if available, otherwise stored converted price or original
+                  const unitPrice = realtimeConverted?.convertedPrice ?? item.convertedPrice ?? item.unitPrice ?? item.price ?? 0;
+                  const totalPrice = quantity * unitPrice;
 
                   return {
                     ...item,
@@ -1957,7 +2151,7 @@ const CartDetails = () => {
                     quantity,
                     unitPrice,
                     totalPrice,
-                    description: item.description || item.productName || 'Cart item',
+                    description: item.partDescription || item.description || item.catalogItemId?.Description || item.productName || `Part: ${item.partId || 'N/A'}`,
                   };
                 });
 
@@ -2135,6 +2329,7 @@ const CartDetails = () => {
         toast.success('Cart changes saved successfully. No reapproval required.');
       }
       setLocalCartChanges({});
+      setConvertedPrices({});
       setHasUnsavedChanges(false);
       setShowConfirmationModal(false);
 
@@ -2160,6 +2355,7 @@ const CartDetails = () => {
     }
 
     setLocalCartChanges({});
+    setConvertedPrices({});
     setHasUnsavedChanges(false);
     setShowConfirmationModal(false);
 
@@ -2735,7 +2931,7 @@ const CartDetails = () => {
       qty: newQty,
       price: detail.price || 0,
       unitOfMeasure: detail.unitOfMeasure || 'piece',
-      currencyCode: detail.currencyCode || '$',
+      currencyCode: detail.currencyCode || getCompanyCurrency(),
       currencyRate: detail.currencyRate || 1.0,
       discount: detail.discount || '0%',
       discountNote: detail.discountNote || '',
@@ -2815,9 +3011,61 @@ const CartDetails = () => {
     setSelectedBudgets(budgetIds);
     setBudgetValidationStatus(validationStatus);
   };
+
+  // Helper to restore body scroll after modal closes
+  const restoreBodyScroll = useCallback(() => {
+    const cleanup = () => {
+      document.body.style.overflow = '';
+      document.body.style.paddingRight = '';
+      document.body.classList.remove('modal-open');
+      // Remove any leftover backdrop elements
+      const backdrops = document.querySelectorAll('.modal-backdrop');
+      backdrops.forEach(backdrop => backdrop.remove());
+    };
+    // Run multiple times to ensure cleanup after Modal's own lifecycle
+    cleanup();
+    setTimeout(cleanup, 50);
+    setTimeout(cleanup, 150);
+    setTimeout(cleanup, 300);
+  }, []);
+
+  // Watch for budget validation modal close and force cleanup
+  useEffect(() => {
+    if (!showBudgetValidation) {
+      // Modal is closed - ensure body scroll is restored
+      const cleanup = () => {
+        document.body.style.overflow = '';
+        document.body.style.paddingRight = '';
+        document.body.classList.remove('modal-open');
+        document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+      };
+      // Run cleanup multiple times to catch any late additions
+      cleanup();
+      const t1 = setTimeout(cleanup, 100);
+      const t2 = setTimeout(cleanup, 300);
+      const t3 = setTimeout(cleanup, 500);
+      const t4 = setTimeout(cleanup, 1000);
+      return () => {
+        clearTimeout(t1);
+        clearTimeout(t2);
+        clearTimeout(t3);
+        clearTimeout(t4);
+      };
+    }
+  }, [showBudgetValidation]);
+
+  // Memoized toggle for BudgetValidationPreview to prevent re-render loops
+  const toggleBudgetValidationModal = useCallback(() => {
+    setShowBudgetValidation(false);
+    setBudgetValidationCartItems(null);
+    restoreBodyScroll();
+  }, [restoreBodyScroll]);
+
   const handleBudgetValidationComplete = async (isValid) => {
     setShowBudgetValidation(false);
     setBudgetValidationCartItems(null);
+    // Restore body scroll
+    restoreBodyScroll();
 
     // ================= CART MODIFICATION FLOW =================
     if (window.cartModificationBudgetValidation) {
@@ -2896,31 +3144,79 @@ const CartDetails = () => {
     toggleModal();
   };
 
-  // Memoize cartItems to prevent infinite loops in BudgetValidationPreview
+  // Memoize cartItems for BudgetValidationPreview - includes local changes for accurate validation
+  // IMPORTANT: Use converted price (company currency) for budget validation since budgets are in company currency
   const memoizedCartItems = useMemo(() => {
     return cartDetails
-      .filter((item) => !item.isDeleted)
+      .filter((item) => !item.isDeleted && !isItemDeleted(item.cartDetailId))
       .map((item) => {
-        const quantity = item.qty || 1;
-        const unitPrice = item.unitPrice || item.price || 0;
-        const totalPrice =
-          item.totalPrice || item.lineTotal || item.extendedPrice || quantity * unitPrice;
+        const localChanges = localCartChanges[item.cartDetailId] || {};
+
+        // Get effective quantity from local changes or item
+        const quantity = localChanges.qty !== undefined
+          ? localChanges.qty
+          : (item.qty || item.quantity || 1);
+
+        // Get the original unit price (supplier currency) - from local changes or item
+        const originalUnitPrice = localChanges.price !== undefined
+          ? localChanges.price
+          : (item.price ?? item.unitPrice ?? 0);
+
+        // Get converted UNIT price for budget validation
+        // realtimeConverted.convertedPrice = converted unit price from real-time API (when user edits price)
+        // item.convertedPrice = converted unit price stored in DB (matching cart display logic line 5558)
+        const realtimeConverted = convertedPrices[item.cartDetailId];
+
+        // Use realtime conversion if available, otherwise fall back to stored converted price or original
+        const unitPrice = realtimeConverted?.convertedPrice ?? item.convertedPrice ?? originalUnitPrice;
+        const totalPrice = quantity * unitPrice;
+
+        const effectiveProjectId = localChanges.projectId !== undefined
+          ? localChanges.projectId
+          : (item.projectId || selectedProjectId);
+
+        const effectiveGlAccountId = localChanges.glAccountId !== undefined
+          ? localChanges.glAccountId
+          : (item.glAccountId || selectedGlAccountId);
 
         return {
           id: item.cartDetailId,
           quantity,
           unitPrice,
           totalPrice,
-          description: item.catalogItem?.description || item.description || item.partDescription,
-          partId: item.catalogItem?.partId || item.partId,
-          projectId: item.projectId || selectedProjectId,
-          glAccountId: item.glAccountId || selectedGlAccountId,
+          description: item.partDescription || item.description || item.catalogItemId?.Description || `Part: ${item.partId || 'N/A'}`,
+          partId: item.partId || item.catalogItemId?.PartId,
+          projectId: effectiveProjectId,
+          glAccountId: effectiveGlAccountId,
         };
       });
-  }, [cartDetails, selectedProjectId]);
+  }, [
+    cartDetails,
+    selectedProjectId,
+    selectedGlAccountId,
+    convertedPrices,
+    // Stringify only budget-relevant fields to prevent loops from description edits
+    (() => {
+      const relevantChanges = {};
+      Object.entries(localCartChanges).forEach(([cartDetailId, changes]) => {
+        if (cartDetailId === 'cartHeader') return;
+        const filteredChanges = {};
+        ['projectId', 'qty', 'price', 'glAccountId', 'isDeleted'].forEach(field => {
+          if (changes[field] !== undefined) {
+            filteredChanges[field] = changes[field];
+          }
+        });
+        if (Object.keys(filteredChanges).length > 0) {
+          relevantChanges[cartDetailId] = filteredChanges;
+        }
+      });
+      return JSON.stringify(relevantChanges);
+    })()
+  ]);
 
   // Memoize cartItems for BudgetSelector to handle local changes properly
   // Memoize cartItems for BudgetSelector - WITHOUT description dependency
+  // IMPORTANT: Use converted price (company currency) for budget validation since budgets are in company currency
   const memoizedBudgetSelectorCartItems = useMemo(() => {
     return cartDetails
       .filter((item) => !item.isDeleted)
@@ -2938,10 +3234,18 @@ const CartDetails = () => {
           changesWithoutDescription.qty !== undefined
             ? changesWithoutDescription.qty
             : item.qty || item.quantity || 1;
-        const effectivePrice =
-          changesWithoutDescription.price !== undefined
-            ? changesWithoutDescription.price
-            : item.unitPrice || item.price || 0;
+
+        // For budget validation, use CONVERTED price (company currency) since budgets are in company currency
+        // Priority: real-time converted price > item's converted price > original price (same currency fallback)
+        const realtimeConverted = convertedPrices[item.cartDetailId];
+        let effectivePrice;
+        if (changesWithoutDescription.price !== undefined) {
+          // User changed price - use real-time converted price if available
+          effectivePrice = realtimeConverted?.convertedPrice ?? changesWithoutDescription.price;
+        } else {
+          // No local change - use item's converted price if available, else original price
+          effectivePrice = item.convertedPrice ?? item.unitPrice ?? item.price ?? 0;
+        }
 
         const effectiveGlAccountId =
           changesWithoutDescription.glAccountId !== undefined
@@ -2952,13 +3256,14 @@ const CartDetails = () => {
           projectId: effectiveProjectId,
           quantity: effectiveQty,
           unitPrice: effectivePrice,
-          description: item.catalogItem?.description || item.description || item.partDescription,
+          description: item.partDescription || item.description || item.catalogItemId?.Description || `Part: ${item.partId || 'N/A'}`,
           glAccountId: effectiveGlAccountId,
         };
       });
   }, [
     cartDetails,
     selectedProjectId,
+    convertedPrices,
     (() => {
 
       const relevantChanges = {};
@@ -2978,6 +3283,27 @@ const CartDetails = () => {
     })(),
     budgetRefreshKey
   ]);
+
+  // Memoize dual currency cart total items - recalculates when local changes or converted prices change
+  const memoizedDualCurrencyItems = useMemo(() => {
+    return cartDetails
+      .filter((item) => !isItemDeleted(item.cartDetailId))
+      .map((item) => {
+        const localChanges = localCartChanges[item.cartDetailId] || {};
+        const currentPrice = localChanges.price !== undefined ? localChanges.price : (item.price || 0);
+        const currentQty = localChanges.qty !== undefined ? localChanges.qty : (item.qty || 0);
+        // Use real-time converted price if available
+        const realtimeConverted = convertedPrices[item.cartDetailId];
+        const convertedPrice = realtimeConverted?.convertedPrice ?? item.convertedPrice;
+        return {
+          originalPrice: currentPrice,
+          originalCurrencyCode: item.originalCurrencyCode,
+          convertedPrice,
+          convertedCurrencyCode: item.convertedCurrencyCode,
+          qty: currentQty,
+        };
+      });
+  }, [cartDetails, localCartChanges, convertedPrices]);
 
   // Create budget summary for collapsed view
   const getBudgetSummary = () => {
@@ -3155,8 +3481,7 @@ const CartDetails = () => {
     setShowBudgetValidation(true);
   };
 
-  // Group visible (non-deleted) items by supplier first, then apply pagination to individual items within groups
-  // Group all visible items by supplier first (not just current page items)
+  // Group visible (non-deleted) items by supplier - accordion view shows all suppliers
   const allGroupedItems = visibleCartDetails.reduce((groups, item) => {
     const { supplierId } = item;
 
@@ -3170,19 +3495,12 @@ const CartDetails = () => {
     return groups;
   }, {});
 
-  // Apply pagination across visible items only, but maintain supplier grouping
-  const allItemsFlattened = Object.values(allGroupedItems).flat();
-  const paginatedItems = allItemsFlattened.slice(indexOfFirstItem, indexOfLastItem);
+  // Get all supplier IDs for expand/collapse all functionality
+  const allSupplierIds = Object.keys(allGroupedItems);
+  const hasMultipleSuppliers = allSupplierIds.length > 1;
 
-  // Re-group the paginated items by supplier
-  const groupedItems = {};
-  paginatedItems.forEach((item) => {
-    const normalizedSupplierId = item.supplierId ? String(item.supplierId) : 'unknown';
-    if (!groupedItems[normalizedSupplierId]) {
-      groupedItems[normalizedSupplierId] = [];
-    }
-    groupedItems[normalizedSupplierId].push(item);
-  });
+  // Use allGroupedItems directly for accordion view (no item-based pagination that splits suppliers)
+  const groupedItems = allGroupedItems;
 
   const handleCatalogSearchForSupplier = async (supplierId) => {
     try {
@@ -3487,300 +3805,197 @@ const CartDetails = () => {
         className="d-flex align-items-center justify-content-between mb-3"
         style={{
           padding: '12px 16px',
-          backgroundColor: '#f8f9fa',
-          borderRadius: '6px',
+          backgroundColor: '#ffffff',
+          borderRadius: '10px',
           border: '1px solid #e9ecef',
+          boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
         }}
       >
+        {/* Left: Cart Info */}
         <div className="d-flex align-items-center gap-3">
-          {/* Breadcrumb */}
-          <nav aria-label="breadcrumb" className="mb-0">
-            <ol
-              className="breadcrumb mb-0"
-              style={{ backgroundColor: 'transparent', padding: 0, fontSize: '14px' }}
-            >
-              <li className="breadcrumb-item">
-                <a
-                  href="#"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    handleNavigationWithConfirmation(() => navigate('/MyCart'));
-                  }}
-                  style={{ color: '#009efb', textDecoration: 'none', fontSize: '14px' }}
-                >
-                  <i className="bi bi-cart me-1"></i>
-                  My Carts
-                </a>
-              </li>
-              <li
-                className="breadcrumb-item active"
-                aria-current="page"
-                style={{ fontSize: '14px' }}
-              >
-                {cartHeaderData?.cartNo || 'Cart Details'}
-              </li>
-            </ol>
-          </nav>
+          {/* Cart Icon */}
+          <div
+            style={{
+              width: '36px',
+              height: '36px',
+              borderRadius: '8px',
+              background: 'linear-gradient(135deg, #009efb 0%, #0084d6 100%)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <i className="bi bi-cart3" style={{ color: 'white', fontSize: '16px' }}></i>
+          </div>
+
+          {/* Cart Number & Name */}
+          <div className="d-flex align-items-center gap-2">
+            <span className="fw-bold" style={{ color: '#2c3e50', fontSize: '15px' }}>
+              {cartHeaderData?.cartNo || 'Cart Details'}
+            </span>
+            {cartHeaderData?.cartName && (
+              <>
+                <span style={{ color: '#dee2e6' }}>|</span>
+                <span className="text-muted" style={{ fontSize: '13px' }}>
+                  {cartHeaderData.cartName}
+                </span>
+              </>
+            )}
+          </div>
+
+          {/* Status Badge */}
+          <div
+            className="d-flex align-items-center gap-1 px-2 py-1"
+            style={{
+              backgroundColor:
+                cartStatusType === 'DRAFT' ? '#e7f1ff'
+                  : cartStatusType === 'PENDING_APPROVAL' ? '#fff3cd'
+                    : cartStatusType === 'APPROVED' ? '#d4edda'
+                      : cartStatusType === 'REJECTED' ? '#f8d7da'
+                        : cartStatusType === 'POGENERATED' ? '#d1ecf1'
+                          : cartStatusType === 'SUBMITTED' ? '#cce5ff'
+                            : '#e9ecef',
+              borderRadius: '6px',
+              fontSize: '12px',
+              fontWeight: '600',
+              color:
+                cartStatusType === 'DRAFT' ? '#004085'
+                  : cartStatusType === 'PENDING_APPROVAL' ? '#856404'
+                    : cartStatusType === 'APPROVED' ? '#155724'
+                      : cartStatusType === 'REJECTED' ? '#721c24'
+                        : cartStatusType === 'POGENERATED' ? '#0c5460'
+                          : cartStatusType === 'SUBMITTED' ? '#004085'
+                            : '#495057',
+            }}
+          >
+            <i
+              className={`bi ${
+                cartStatusType === 'DRAFT' ? 'bi-pencil-square'
+                  : cartStatusType === 'PENDING_APPROVAL' ? 'bi-hourglass-split'
+                    : cartStatusType === 'APPROVED' ? 'bi-check-circle-fill'
+                      : cartStatusType === 'REJECTED' ? 'bi-x-circle-fill'
+                        : cartStatusType === 'POGENERATED' ? 'bi-file-earmark-check-fill'
+                          : cartStatusType === 'SUBMITTED' ? 'bi-send-check-fill'
+                            : 'bi-circle'
+              }`}
+              style={{ fontSize: '11px' }}
+            ></i>
+            <span>{formatStatusText(cartStatusType)}</span>
+          </div>
 
           {/* Divider */}
-          <div style={{ height: '20px', width: '1px', backgroundColor: '#dee2e6' }}></div>
+          <div style={{ height: '24px', width: '1px', backgroundColor: '#e9ecef' }}></div>
 
-          {/* Cart Name */}
-          {cartHeaderData?.cartName && (
-            <span className="text-muted" style={{ fontSize: '14px' }}>
-              {cartHeaderData.cartName}
-            </span>
-          )}
-
-          {/* Item Count Badge */}
-          <span className="badge bg-secondary" style={{ fontSize: '14px', padding: '4px 8px' }}>
-            {(() => {
-              const visibleItemCount = cartDetails.filter(
-                (item) => !isItemDeleted(item.cartDetailId),
-              ).length;
-              return `${visibleItemCount} item${visibleItemCount !== 1 ? 's' : ''}`;
-            })()}
+          {/* Item Count */}
+          <span className="text-muted" style={{ fontSize: '13px' }}>
+            <i className="bi bi-box-seam me-1"></i>
+            {cartDetails.filter((item) => !isItemDeleted(item.cartDetailId)).length} items
           </span>
 
           {/* Total */}
-          <span className="fw-bold" style={{ color: '#009efb', fontSize: '14px' }}>
-            <i className="bi bi-calculator me-1"></i>
-            Total: $
-            {cartDetails
-              .filter((item) => !isItemDeleted(item.cartDetailId))
-              .reduce((sum, item) => {
-                const price = getDisplayValue(item, 'price') || item.price;
-                const qty = getDisplayValue(item, 'qty') || item.qty;
-                return sum + price * qty;
-              }, 0)
-              .toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          <span className="fw-semibold" style={{ color: '#28a745', fontSize: '14px' }}>
+            {formatDualCurrencyTotal(memoizedDualCurrencyItems, getUserType())}
           </span>
         </div>
 
-        {/* Cart History and Duplicate Cart Buttons - Visible for non-DRAFT carts */}
-        {cartStatusType !== 'DRAFT' && (
-          <div className="d-flex align-items-center gap-2">
-            {/* Status Display for non-DRAFT/non-PENDING_APPROVAL carts */}
-            {cartStatusType !== 'PENDING_APPROVAL' && (
-              <div
-                className="d-flex align-items-center gap-1 px-2 py-1 me-2"
-                style={{
-                  backgroundColor:
-                    cartStatusType === 'APPROVED'
-                      ? '#d4edda'
-                      : cartStatusType === 'REJECTED'
-                        ? '#f8d7da'
-                        : cartStatusType === 'POGENERATED'
-                          ? '#d1ecf1'
-                          : cartStatusType === 'SUBMITTED'
-                            ? '#cce5ff'
-                            : '#e9ecef',
-                  borderRadius: '6px',
-                  border: `1px solid ${cartStatusType === 'APPROVED'
-                      ? '#28a745'
-                      : cartStatusType === 'REJECTED'
-                        ? '#dc3545'
-                        : cartStatusType === 'POGENERATED'
-                          ? '#17a2b8'
-                          : cartStatusType === 'SUBMITTED'
-                            ? '#007bff'
-                            : '#6c757d'
-                    }`,
-                }}
-              >
-                <i
-                  className={`bi ${cartStatusType === 'APPROVED'
-                      ? 'bi-check-circle-fill'
-                      : cartStatusType === 'REJECTED'
-                        ? 'bi-x-circle-fill'
-                        : cartStatusType === 'POGENERATED'
-                          ? 'bi-file-earmark-check-fill'
-                          : cartStatusType === 'SUBMITTED'
-                            ? 'bi-send-check-fill'
-                            : 'bi-circle'
-                    }`}
-                  style={{
-                    fontSize: '12px',
-                    color:
-                      cartStatusType === 'APPROVED'
-                        ? '#28a745'
-                        : cartStatusType === 'REJECTED'
-                          ? '#dc3545'
-                          : cartStatusType === 'POGENERATED'
-                            ? '#0c5460'
-                            : cartStatusType === 'SUBMITTED'
-                              ? '#004085'
-                              : '#6c757d',
-                  }}
-                ></i>
-                <span
-                  style={{
-                    fontSize: '11px',
-                    fontWeight: '600',
-                    color:
-                      cartStatusType === 'APPROVED'
-                        ? '#155724'
-                        : cartStatusType === 'REJECTED'
-                          ? '#721c24'
-                          : cartStatusType === 'POGENERATED'
-                            ? '#0c5460'
-                            : cartStatusType === 'SUBMITTED'
-                              ? '#004085'
-                              : '#495057',
-                  }}
-                >
-                  {formatStatusText(cartStatusType)}
-                </span>
-              </div>
-            )}
-            {/* Resubmit button for rejected carts */}
-            {cartStatusType === 'REJECTED' && (
-              <Button
-                color="warning"
-                size="sm"
-                disabled={isCartEmpty}
-                onClick={handleResubmitClick}
-                style={{
-                  borderRadius: '8px',
-                  padding: '6px 16px',
-                  fontSize: '13px',
-                  fontWeight: '500',
-                }}
-              >
-                <i className="bi bi-arrow-clockwise me-1"></i>
-                Resubmit
-              </Button>
-            )}
+        {/* Right: Action Buttons */}
+        <div className="d-flex align-items-center gap-2">
+          {/* Save Changes Button */}
+          {hasUnsavedChanges && isCartEditable() && (
             <Button
-              color="secondary"
+              color="warning"
               size="sm"
-              onClick={() => setShowCartHistory(true)}
-              style={{
-                borderRadius: '8px',
-                padding: '6px 16px',
-                fontSize: '13px',
+              onClick={() => {
+                Swal.fire({
+                  title: 'Save Changes?',
+                  text: 'Do you want to save your changes before proceeding?',
+                  icon: 'question',
+                  showCancelButton: true,
+                  confirmButtonText: 'Yes, Save Changes',
+                  cancelButtonText: 'No, Continue Without Saving',
+                  confirmButtonColor: '#28a745',
+                  cancelButtonColor: '#6c757d'
+                }).then((result) => {
+                  if (result.isConfirmed) {
+                    handleConfirmChanges();
+                  } else {
+                    setLocalCartChanges({});
+                    setHasUnsavedChanges(false);
+                  }
+                });
               }}
+              style={{ borderRadius: '6px', padding: '6px 12px', fontSize: '12px', fontWeight: '500' }}
             >
-              <i className="bi bi-clock-history me-1"></i>
-              History
+              <i className="bi bi-save me-1"></i>
+              Save
             </Button>
+          )}
+
+          {/* History Button */}
+          <Button
+            color="light"
+            size="sm"
+            onClick={() => setShowCartHistory(true)}
+            style={{ borderRadius: '6px', padding: '6px 12px', fontSize: '12px', border: '1px solid #dee2e6' }}
+          >
+            <i className="bi bi-clock-history"></i>
+          </Button>
+
+          {/* Duplicate Cart Button */}
+          {cartStatusType !== 'DRAFT' && (
             <Button
-              color="info"
+              color="light"
               size="sm"
               onClick={handleDuplicateCart}
-              style={{
-                borderRadius: '8px',
-                padding: '6px 16px',
-                fontSize: '13px',
-                background: 'linear-gradient(135deg, #009efb 0%, #0084d6 100%)',
-                border: 'none',
-                color: 'white',
-              }}
+              style={{ borderRadius: '6px', padding: '6px 12px', fontSize: '12px', border: '1px solid #dee2e6' }}
+              title="Duplicate Cart"
             >
-              <i className="bi bi-copy me-1"></i>
-              Duplicate Cart
+              <i className="bi bi-copy"></i>
             </Button>
-          </div>
-        )}
+          )}
 
-        {/* Actions for DRAFT status - Add Products and Submit/Apply buttons */}
-        {(cartStatusType === 'DRAFT' || cartStatusType === 'PENDING_APPROVAL') && !submitted && (
-          <div className="d-flex align-items-center gap-2">
-            {hasUnsavedChanges && isCartEditable() && (
-              <button
-                className="btn btn-warning btn-sm"
-                onClick={() => {
-                  Swal.fire({
-                    title: 'Save Changes?',
-                    text: 'Do you want to save your changes before proceeding?',
-                    icon: 'question',
-                    showCancelButton: true,
-                    confirmButtonText: 'Yes, Save Changes',
-                    cancelButtonText: 'No, Continue Without Saving',
-                    confirmButtonColor: '#28a745',
-                    cancelButtonColor: '#6c757d'
-                  }).then((result) => {
-                    if (result.isConfirmed) {
-                      handleConfirmChanges();
-                    } else {
-                      setLocalCartChanges({});
-                      setHasUnsavedChanges(false);
-                    }
-                  });
-                }}
-                style={{
-                  borderRadius: '8px',
-                  padding: '6px 16px',
-                  fontSize: '13px',
-                  fontWeight: '500'
-                }}
-              >
-                <i className="bi bi-save me-1"></i>
-                Save Changes
-              </button>
-            )}
-            {/* Status Display */}
-            <div
-              className="d-flex align-items-center gap-1 px-2 py-1"
-              style={{
-                backgroundColor: cartStatusType === 'DRAFT' ? '#e7f1ff' : '#fff3cd',
-                borderRadius: '6px',
-                border: `1px solid ${cartStatusType === 'DRAFT' ? '#007bff' : '#ffc107'}`,
-              }}
+          {/* Resubmit Button */}
+          {cartStatusType === 'REJECTED' && (
+            <Button
+              color="warning"
+              size="sm"
+              disabled={isCartEmpty}
+              onClick={handleResubmitClick}
+              style={{ borderRadius: '6px', padding: '6px 12px', fontSize: '12px', fontWeight: '500' }}
             >
-              <i
-                className={`bi ${cartStatusType === 'DRAFT' ? 'bi-pencil-square' : 'bi-hourglass-split'}`}
-                style={{ fontSize: '12px', color: cartStatusType === 'DRAFT' ? '#007bff' : '#856404' }}
-              ></i>
-              <span
-                style={{
-                  fontSize: '11px',
-                  fontWeight: '600',
-                  color: cartStatusType === 'DRAFT' ? '#004085' : '#856404',
-                }}
-              >
-                {formatStatusText(cartStatusType)}
-              </span>
-            </div>
+              <i className="bi bi-arrow-clockwise me-1"></i>
+              Resubmit
+            </Button>
+          )}
+
+          {/* Add Products Button */}
+          {(cartStatusType === 'DRAFT' || cartStatusType === 'PENDING_APPROVAL') && !submitted && (
             <Button
               color="primary"
               size="sm"
               onClick={handleAddProduct}
-              style={{
-                borderRadius: '8px',
-                padding: '6px 16px',
-                fontSize: '13px',
-              }}
+              style={{ borderRadius: '6px', padding: '6px 12px', fontSize: '12px' }}
             >
               <i className="bi bi-plus-circle me-1"></i>
               Add Products
             </Button>
-            {cartDetails.length > 0 && (
-              <>
-                <Button
-                  color="success"
-                  size="sm"
-                  disabled={
-                    isCartEmpty ||
-                    submitted ||
-                    cartStatusType === 'APPROVED' ||
-                    cartStatusType === 'POGENERATED'
-                  }
-                  onClick={handleSubmitClick}
-                  style={{
-                    fontSize: '13px',
-                    padding: '6px 16px',
-                    borderRadius: '8px',
-                    fontWeight: '500',
-                  }}
-                >
-                  <i className="bi bi-send me-1"></i>
-                  Submit Cart
-                </Button>
-              </>
-            )}
-          </div>
-        )}      </div>
+          )}
+
+          {/* Submit Cart Button */}
+          {cartStatusType === 'DRAFT' && !submitted && cartDetails.length > 0 && (
+            <Button
+              color="success"
+              size="sm"
+              disabled={isCartEmpty}
+              onClick={handleSubmitClick}
+              style={{ borderRadius: '6px', padding: '6px 12px', fontSize: '12px', fontWeight: '500' }}
+            >
+              <i className="bi bi-send me-1"></i>
+              Submit
+            </Button>
+          )}
+        </div>
+      </div>
 
       <Card
         className="mb-2 shadow-sm"
@@ -4294,7 +4509,7 @@ const CartDetails = () => {
                           <div className="me-3 text-end">
                             <small className="text-muted d-block" style={{ fontSize: '0.8rem' }}>
                               {summary.projectCount} project{summary.projectCount !== 1 ? 's' : ''}{' '}
-                              •{formatCurrency(summary.totalAmount)} total
+                              •{formatCurrency(summary.totalAmount, getCompanyCurrency())} total
                             </small>
                             <small
                               className={`text-${validationSummary.color} d-block fw-bold`}
@@ -4491,7 +4706,7 @@ const CartDetails = () => {
                                               qty: 1,
                                               price: 0,
                                               unitOfMeasure: 'Each',
-                                              currencyCode: 'USD',
+                                              currencyCode: getCompanyCurrency(),
                                               catalogId: null,
                                               catalogItemId: {
                                                 CatalogItemId: null,
@@ -4646,8 +4861,7 @@ const CartDetails = () => {
                                               </h6>
                                             </div>
                                             <p className="mb-1 small">
-                                              Price: {item.UnitPrice || item.price || 'N/A'}{' '}
-                                              {item.Currency || item.currencyCode || 'N/A'}
+                                              Price: {item.UnitPrice || item.price ? formatCurrency(item.UnitPrice || item.price, getCompanyCurrency()) : 'N/A'}
                                             </p>
                                             <p className="mb-1 small">
                                               Supplier:{' '}
@@ -4676,6 +4890,29 @@ const CartDetails = () => {
                           </Card>
                         )}
                     </div>
+                    {/* Expand All / Collapse All buttons for multiple suppliers */}
+                    {hasMultipleSuppliers && cartDetails.length > 0 && (
+                      <div className="d-flex align-items-start gap-2 ms-auto">
+                        <Button
+                          size="sm"
+                          color="outline-secondary"
+                          onClick={() => expandAllSuppliers(allSupplierIds)}
+                          style={{ fontSize: '12px', padding: '6px 12px', whiteSpace: 'nowrap' }}
+                        >
+                          <i className="bi bi-arrows-expand me-1"></i>
+                          Expand All
+                        </Button>
+                        <Button
+                          size="sm"
+                          color="outline-secondary"
+                          onClick={collapseAllSuppliers}
+                          style={{ fontSize: '12px', padding: '6px 12px', whiteSpace: 'nowrap' }}
+                        >
+                          <i className="bi bi-arrows-collapse me-1"></i>
+                          Collapse All
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 </div>
               </Card>
@@ -4697,78 +4934,104 @@ const CartDetails = () => {
                 </CardBody>
               </Card>
             ) : (
-              Object.entries(groupedItems).map(([supplierId, items]) => {
-                // Convert supplierId back to number for supplier lookup, handle 'unknown' case
-                const supplierIdNum = supplierId === 'unknown' ? null : Number(supplierId);
-                const supplierName = getSupplierName(supplierIdNum);
-                const visibleItems = items.filter((item) => !isItemDeleted(item.cartDetailId));
-                const orderValue = visibleItems.reduce((sum, item) => {
-                  const price = getDisplayValue(item, 'price') || item.price;
-                  const qty = getDisplayValue(item, 'qty') || item.qty;
-                  return sum + price * qty;
-                }, 0);
-                const lineItemCount = visibleItems.length;
+              <>
+                {Object.entries(groupedItems).map(([supplierId, items]) => {
+                  // Convert supplierId back to number for supplier lookup, handle 'unknown' case
+                  const supplierIdNum = supplierId === 'unknown' ? null : Number(supplierId);
+                  const supplierName = getSupplierName(supplierIdNum);
+                  const visibleItems = items.filter((item) => !isItemDeleted(item.cartDetailId));
+                  const isExpanded = expandedSuppliers[supplierId] ?? false;
 
-                return (
-                  <Card
-                    key={`supplier-${supplierId}-page-${currentPage}`}
-                    className="mb-2 shadow-sm"
-                    style={{ borderRadius: '12px', border: 'none' }}
-                  >
-                    <CardBody className="p-4">
-                      <div className="d-flex align-items-center justify-content-between mb-3 pb-2 border-bottom">
+                  // Calculate dual currency totals for this supplier
+                  const supplierDualCurrencyItems = visibleItems.map((item) => {
+                    const localChanges = localCartChanges[item.cartDetailId] || {};
+                    const currentPrice = localChanges.price !== undefined ? localChanges.price : (item.price || 0);
+                    const currentQty = localChanges.qty !== undefined ? localChanges.qty : (item.qty || 0);
+                    // Use real-time converted price if available
+                    const realtimeConverted = convertedPrices[item.cartDetailId];
+                    const convertedPrice = realtimeConverted?.convertedPrice ?? item.convertedPrice;
+                    return {
+                      originalPrice: currentPrice,
+                      originalCurrencyCode: item.originalCurrencyCode,
+                      convertedPrice,
+                      convertedCurrencyCode: item.convertedCurrencyCode,
+                      qty: currentQty,
+                    };
+                  });
+                  const lineItemCount = visibleItems.length;
+
+                  return (
+                    <Card
+                      key={`supplier-${supplierId}`}
+                      className="mb-2 shadow-sm"
+                      style={{ borderRadius: '10px', border: 'none', overflow: 'hidden' }}
+                    >
+                      {/* Clickable Supplier Header - Accordion Toggle */}
+                      <div
+                        className="d-flex align-items-center justify-content-between p-3"
+                        style={{
+                          backgroundColor: isExpanded ? '#f8f9fa' : '#fff',
+                          cursor: 'pointer',
+                          borderBottom: isExpanded ? '1px solid #e9ecef' : 'none',
+                          transition: 'background-color 0.2s ease',
+                        }}
+                        onClick={() => toggleSupplierExpand(supplierId)}
+                        role="button"
+                        tabIndex={0}
+                        onKeyPress={(e) => e.key === 'Enter' && toggleSupplierExpand(supplierId)}
+                      >
                         <div className="d-flex align-items-center">
                           <i
-                            className="bi bi-building me-2"
-                            style={{ color: '#009efb', fontSize: '18px' }}
+                            className={`bi ${isExpanded ? 'bi-chevron-down' : 'bi-chevron-right'} me-2`}
+                            style={{ color: '#6c757d', fontSize: '14px', transition: 'transform 0.2s ease' }}
                           ></i>
-                          <h6 className="mb-0" style={{ color: '#009efb', fontWeight: '600' }}>
+                          <i
+                            className="bi bi-building me-2"
+                            style={{ color: '#009efb', fontSize: '16px' }}
+                          ></i>
+                          <h6 className="mb-0" style={{ color: '#009efb', fontWeight: '600', fontSize: '14px' }}>
                             {supplierName}
                           </h6>
                         </div>
                         <div className="d-flex align-items-center gap-3">
-                          <div className="d-flex align-items-center gap-2">
-                            <span className="text-muted" style={{ fontSize: '13px' }}>
-                              Items:
-                            </span>
-                            <span
-                              className="fw-semibold"
-                              style={{ color: '#495057', fontSize: '13px' }}
-                            >
-                              {lineItemCount}
-                            </span>
-                          </div>
-                          <div className="d-flex align-items-center gap-2">
-                            <span className="text-muted" style={{ fontSize: '13px' }}>
-                              Value:
-                            </span>
-                            <span
-                              className="fw-bold"
-                              style={{ color: '#198754', fontSize: '14px' }}
-                            >
-                              $
-                              {orderValue.toLocaleString('en-US', {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2,
-                              })}
-                            </span>
-                          </div>
+                          <span
+                            className="badge"
+                            style={{
+                              backgroundColor: '#e7f3ff',
+                              color: '#0066cc',
+                              fontSize: '12px',
+                              fontWeight: '500',
+                              padding: '4px 10px',
+                            }}
+                          >
+                            {lineItemCount} {lineItemCount === 1 ? 'item' : 'items'}
+                          </span>
+                          <span
+                            className="fw-bold"
+                            style={{ color: '#198754', fontSize: '14px' }}
+                          >
+                            {formatDualCurrencyTotal(supplierDualCurrencyItems, getUserType())}
+                          </span>
                         </div>
                       </div>
-                      <Row>
-                        {items
-                          .filter((cartItem) => !isItemDeleted(cartItem.cartDetailId))
-                          .map((cartItem) => (
-                            <Col key={`item-${cartItem.cartDetailId}`} md="12" className="mb-3">
-                              <div
-                                className="border rounded p-3"
-                                style={{
-                                  borderRadius: '8px',
-                                  backgroundColor: localCartChanges[cartItem.cartDetailId]
-                                    ? '#fff7e6'
-                                    : '#fafafa',
-                                  border: localCartChanges[cartItem.cartDetailId]
-                                    ? '1px solid #ffc107'
+
+                      {/* Collapsible Items Section */}
+                      {isExpanded && (
+                        <CardBody className="p-3 pt-2">
+                          <Row className="g-2">
+                            {items
+                              .filter((cartItem) => !isItemDeleted(cartItem.cartDetailId))
+                              .map((cartItem) => (
+                                <Col key={`item-${cartItem.cartDetailId}`} md="12">
+                                  <div
+                                    className="border rounded p-2"
+                                    style={{
+                                      borderRadius: '6px',
+                                      backgroundColor: localCartChanges[cartItem.cartDetailId]
+                                        ? '#fff7e6'
+                                        : '#fafafa',
+                                      border: localCartChanges[cartItem.cartDetailId]
+                                        ? '1px solid #ffc107'
                                     : '1px solid #e0e0e0',
                                   position: 'relative',
                                 }}
@@ -4793,11 +5056,11 @@ const CartDetails = () => {
                                 <Row className="align-items-start">
                                   <Col
                                     md="2"
-                                    xs="4"
-                                    className="d-flex flex-column align-items-center justify-content-between"
-                                    style={{ height: '100%' }}
+                                    xs="3"
+                                    className="d-flex flex-column align-items-center"
+                                    style={{ minWidth: '120px', maxWidth: '140px' }}
                                   >
-                                    <div style={{ width: '80px', height: '80px' }}>
+                                    <div style={{ width: '70px', height: '70px' }}>
                                       <img
                                         src={
                                           (getDisplayValue(cartItem, 'catalogItemId') &&
@@ -4810,7 +5073,7 @@ const CartDetails = () => {
                                           width: '100%',
                                           height: '100%',
                                           objectFit: 'cover',
-                                          borderRadius: '8px',
+                                          borderRadius: '6px',
                                           border: '1px solid #e0e0e0',
                                         }}
                                         onError={(e) => {
@@ -4820,19 +5083,20 @@ const CartDetails = () => {
                                       />
                                     </div>
                                     <div
-                                      className="d-flex align-items-center justify-content-center gap-1"
-                                      style={{ marginTop: '16px' }}
+                                      className="d-flex align-items-center justify-content-center"
+                                      style={{ marginTop: '8px', gap: '2px' }}
                                     >
                                       <Button
                                         size="sm"
                                         color="outline-primary"
                                         data-cart-action="quantity-decrease"
                                         style={{
-                                          borderRadius: '6px',
-                                          width: '28px',
-                                          height: '28px',
+                                          borderRadius: '4px',
+                                          width: '24px',
+                                          height: '24px',
                                           padding: '0',
-                                          fontSize: '12px',
+                                          fontSize: '11px',
+                                          minWidth: '24px',
                                         }}
                                         onClick={() => {
                                           const currentQty =
@@ -4877,23 +5141,23 @@ const CartDetails = () => {
                                             )
                                           }
                                           style={{
-                                            width: '50px',
-                                            height: '28px',
+                                            width: '40px',
+                                            height: '24px',
                                             textAlign: 'center',
-                                            fontSize: '14px',
+                                            fontSize: '12px',
                                             fontWeight: '600',
-                                            margin: '0 8px',
+                                            padding: '0 2px',
                                             border: '1px solid #e0e0e0',
                                             borderRadius: '4px',
                                           }}
                                         />
                                       ) : (
                                         <span
-                                          className="mx-2 fw-bold"
+                                          className="fw-bold"
                                           style={{
-                                            minWidth: '30px',
+                                            minWidth: '28px',
                                             textAlign: 'center',
-                                            fontSize: '14px',
+                                            fontSize: '12px',
                                           }}
                                         >
                                           {cartItem.qty}
@@ -4904,11 +5168,12 @@ const CartDetails = () => {
                                         color="outline-primary"
                                         data-cart-action="quantity-increase"
                                         style={{
-                                          borderRadius: '6px',
-                                          width: '28px',
-                                          height: '28px',
+                                          borderRadius: '4px',
+                                          width: '24px',
+                                          height: '24px',
                                           padding: '0',
-                                          fontSize: '12px',
+                                          fontSize: '11px',
+                                          minWidth: '24px',
                                         }}
                                         onClick={() => {
                                           const currentQty =
@@ -4943,18 +5208,17 @@ const CartDetails = () => {
                                     <Button
                                       size="sm"
                                       color="light"
-                                      className="mt-2 border-0"
+                                      className="mt-1 border-0"
                                       data-cart-action="delete"
                                       style={{
-                                        borderRadius: '8px',
-                                        width: '36px',
-                                        height: '32px',
+                                        borderRadius: '6px',
+                                        width: '28px',
+                                        height: '26px',
                                         padding: '0',
-                                        fontSize: '12px',
+                                        fontSize: '11px',
                                         backgroundColor: '#fff5f5',
                                         color: '#dc3545',
                                         transition: 'all 0.2s ease',
-                                        boxShadow: '0 2px 4px rgba(220, 53, 69, 0.1)',
                                       }}
                                       onClick={() => {
                                         if (isCartEditable()) {
@@ -5146,22 +5410,31 @@ const CartDetails = () => {
                                                         ...base,
                                                         height: '26px',
                                                       }),
-                                                      option: (base, state) => ({
-                                                        ...base,
-                                                        fontSize: '12px',
-                                                        padding: '6px 10px',
-                                                        backgroundColor: state.data.customOption
-                                                          ? '#fff3cd'
-                                                          : base.backgroundColor,
-                                                        color: state.data.customOption
-                                                          ? '#856404'
-                                                          : base.color,
-                                                        '&:hover': {
-                                                          backgroundColor: state.data.customOption
-                                                            ? '#ffeaa7'
-                                                            : '#f8f9fa',
-                                                        },
-                                                      }),
+                                                      option: (base, state) => {
+                                                        let bgColor = base.backgroundColor;
+                                                        let textColor = base.color;
+                                                        let hoverBgColor = '#f8f9fa';
+
+                                                        if (state.data.customOption) {
+                                                          bgColor = '#fff3cd';
+                                                          textColor = '#856404';
+                                                          hoverBgColor = '#ffeaa7';
+                                                        } else if (state.data.isInternalCatalog) {
+                                                          bgColor = '#e8f4f8';
+                                                          hoverBgColor = '#d1ecf1';
+                                                        }
+
+                                                        return {
+                                                          ...base,
+                                                          fontSize: '12px',
+                                                          padding: '6px 10px',
+                                                          backgroundColor: bgColor,
+                                                          color: textColor,
+                                                          '&:hover': {
+                                                            backgroundColor: hoverBgColor,
+                                                          },
+                                                        };
+                                                      },
                                                       singleValue: (base, state) => ({
                                                         ...base,
                                                         color: state.data.customOption
@@ -5202,6 +5475,7 @@ const CartDetails = () => {
                                                           cartItem.cartDetailId,
                                                           selectedOption.value,
                                                           selectedOption.customOption || false,
+                                                          selectedOption,
                                                         );
                                                       } else {
                                                         // Clear button clicked - reset ALL related fields
@@ -5270,6 +5544,42 @@ const CartDetails = () => {
                                                           </div>
                                                         );
                                                       }
+                                                      if (option.isInternalCatalog) {
+                                                        return (
+                                                          <div className="d-flex align-items-center justify-content-between">
+                                                            <span>{option.label}</span>
+                                                            <span
+                                                              className="badge ms-2"
+                                                              style={{
+                                                                backgroundColor: '#17a2b8',
+                                                                color: 'white',
+                                                                fontSize: '10px',
+                                                                padding: '2px 6px',
+                                                              }}
+                                                            >
+                                                              Internal
+                                                            </span>
+                                                          </div>
+                                                        );
+                                                      }
+                                                      if (option.isSupplierCatalog) {
+                                                        return (
+                                                          <div className="d-flex align-items-center justify-content-between">
+                                                            <span>{option.label}</span>
+                                                            <span
+                                                              className="badge ms-2"
+                                                              style={{
+                                                                backgroundColor: '#28a745',
+                                                                color: 'white',
+                                                                fontSize: '10px',
+                                                                padding: '2px 6px',
+                                                              }}
+                                                            >
+                                                              Supplier
+                                                            </span>
+                                                          </div>
+                                                        );
+                                                      }
                                                       return option.label;
                                                     }}
                                                     filterOption={null}
@@ -5283,19 +5593,10 @@ const CartDetails = () => {
                                                 className="text-muted me-2"
                                                 style={{ fontSize: '12px', minWidth: '70px' }}
                                               >
-                                                Unit:
-                                              </span>
-                                              <span style={{ fontSize: '12px', color: '#000' }}>
-                                                {cartItem.unitOfMeasure}
-                                              </span>
-                                            </div>
-
-                                            <div className="d-flex align-items-center">
-                                              <span
-                                                className="text-muted me-2"
-                                                style={{ fontSize: '12px', minWidth: '70px' }}
-                                              >
                                                 Unit Price:
+                                              </span>
+                                              <span style={{ fontSize: '12px', color: '#000', marginRight: '2px' }}>
+                                                {getCurrencySymbol(cartItem.originalCurrencyCode || 'USD')}
                                               </span>
                                               <Input
                                                 type="number"
@@ -5322,9 +5623,8 @@ const CartDetails = () => {
                                                 style={{
                                                   fontSize: '12px',
                                                   height: '26px',
-
                                                   borderRadius: '4px',
-                                                  width: '100px',
+                                                  width: '80px',
                                                 }}
                                                 placeholder="0.00"
                                                 disabled={
@@ -5337,6 +5637,10 @@ const CartDetails = () => {
                                                     ].includes(cartStatusType))
                                                 }
                                               />
+                                              <span style={{ fontSize: '12px', color: '#666', margin: '0 4px' }}>/</span>
+                                              <span style={{ fontSize: '12px', color: '#000' }}>
+                                                {cartItem.unitOfMeasure || 'Unit'}
+                                              </span>
                                             </div>
 
                                             <div className="d-flex align-items-center">
@@ -5353,14 +5657,22 @@ const CartDetails = () => {
                                                   color: '#000',
                                                 }}
                                               >
-                                                $
-                                                {(
-                                                  ((getDisplayValue(cartItem, 'price') ?? cartItem.price ?? 0) *
-                                                    (getDisplayValue(cartItem, 'qty') ?? cartItem.qty ?? 0))
-                                                ).toLocaleString('en-US', {
-                                                  minimumFractionDigits: 2,
-                                                  maximumFractionDigits: 2,
-                                                })}
+                                                {(() => {
+                                                  const currentPrice = getDisplayValue(cartItem, 'price') ?? cartItem.originalPrice ?? cartItem.price ?? 0;
+                                                  const currentQty = getDisplayValue(cartItem, 'qty') ?? cartItem.qty ?? 0;
+                                                  // Use real-time converted price if available
+                                                  const realtimeConverted = convertedPrices[cartItem.cartDetailId];
+                                                  const convertedUnitPrice = realtimeConverted?.convertedPrice ?? cartItem.convertedPrice;
+                                                  return formatDualCurrency(
+                                                    {
+                                                      originalPrice: currentPrice * currentQty,
+                                                      originalCurrency: cartItem.originalCurrencyCode || getCompanyCurrency(),
+                                                      convertedPrice: convertedUnitPrice ? convertedUnitPrice * currentQty : null,
+                                                      convertedCurrency: cartItem.convertedCurrencyCode,
+                                                    },
+                                                    getUserType()
+                                                  );
+                                                })()}
                                               </span>
                                             </div>
                                           </>
@@ -5718,13 +6030,16 @@ const CartDetails = () => {
                               </Col>
                             </Row>
                           )}
-                      </Row>
-                    </CardBody>
-                  </Card>
-                );
-              })
+                          </Row>
+                        </CardBody>
+                      )}
+                    </Card>
+                  );
+                })}
+              </>
             )}
-            {visibleCartDetails.length > 5 && (
+            {/* Pagination removed - accordion shows all suppliers without splitting */}
+            {false && visibleCartDetails.length > 5 && (
               <div className="d-flex justify-content-center mt-4">
                 <Pagination size="sm" className="pagination">
                   <PaginationItem disabled={currentPage === 1}>
@@ -5874,7 +6189,7 @@ const CartDetails = () => {
                                     fontWeight: '500',
                                   }}
                                 >
-                                  ${po.orderAmount?.toLocaleString() || '0.00'}
+                                  {formatCurrency(po.orderAmount || 0, getCompanyCurrency())}
                                 </td>
 
                                 <td style={{ padding: '8px', verticalAlign: 'middle' }}>
@@ -6802,7 +7117,7 @@ const CartDetails = () => {
       {/* Budget Validation Preview Modal */}
       <BudgetValidationPreview
         isOpen={showBudgetValidation}
-        toggle={() => setShowBudgetValidation(false)}
+        toggle={toggleBudgetValidationModal}
         cartItems={budgetValidationCartItems || memoizedCartItems}
         cartHeaderData={cartHeaderData}
         onValidationComplete={handleBudgetValidationComplete}
@@ -6814,6 +7129,7 @@ const CartDetails = () => {
         toggle={() => setShowCartHistory(false)}
         cartId={cartId}
         companyId={companyId}
+        companyCurrency={getCompanyCurrency()}
       />
     </div>
   );

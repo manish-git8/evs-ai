@@ -6,6 +6,8 @@ import Header from './header/Header'
 import Sidebar from './sidebars/vertical/Sidebar';
 import HorizontalHeader from './header/HorizontalHeader';
 import HorizontalSidebar from './sidebars/horizontal/HorizontalSidebar';
+import ChatBot from '../components/ChatBot/ChatBot';
+
 
 const FullLayout = () => {
   const customizerToggle = useSelector((state) => state.customizer.customizerSidebar);
@@ -43,8 +45,11 @@ const FullLayout = () => {
           </Container>
         </div>
       </div>
+      {/******** ChatBot **********/}
+      <ChatBot />
     </main>
   );
 };
 
 export default FullLayout;
+

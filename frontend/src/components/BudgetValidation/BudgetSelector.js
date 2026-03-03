@@ -2,23 +2,7 @@ import React, { useState, useEffect } from 'react';
 import PropTypes from 'prop-types';
 import { Badge, Alert, Spinner } from 'reactstrap';
 import BudgetService from '../../services/BudgetService';
-import { getEntityId } from '../../pages/localStorageUtil';
-
-// Enhanced currency formatting function
-const formatCurrency = (amount, currency = 'USD') => {
-  if (amount == null || Number.isNaN(Number(amount))) {
-    return currency === 'USD' ? '$0.00' : `${currency} 0.00`;
-  }
-
-  const formatter = new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency,
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-
-  return formatter.format(Number(amount));
-};
+import { getEntityId, formatCurrency } from '../../pages/localStorageUtil';
 
 const BudgetSelector = ({ onBudgetSelect, cartItems = [], purchaseType = 'opex' }) => {
   const [loading, setLoading] = useState(true);
@@ -90,6 +74,8 @@ const BudgetSelector = ({ onBudgetSelect, cartItems = [], purchaseType = 'opex' 
     try {
       setBudgetSummary({ ...summary, overallStatus: 'LOADING' });
       // Prepare line items for budget validation API
+      // NOTE: unitPrice should be in company currency (converted price) for correct budget validation
+      // Parent components are responsible for passing converted prices in cartItems
       const lineItems = (cartItems || []).map((item) => ({
         projectId: item.projectId || null,
         amount: (item.quantity || 1) * (item.unitPrice || 0),

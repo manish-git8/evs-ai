@@ -8,7 +8,8 @@ import { FaSort } from 'react-icons/fa';
 import 'react-toastify/dist/ReactToastify.css';
 import '../CompanyManagement/ReactBootstrapTable.scss';
 import CartService from '../../services/CartService';
-import { getEntityId, getUserId } from '../localStorageUtil';
+import { getEntityId, getUserId, formatCurrency, getCompanyCurrency } from '../localStorageUtil';
+import { formatDualCurrencyTotal, getUserType } from '../../utils/currencyUtils';
 import ApprovalPolicyManagementService from '../../services/ApprovalPolicyManagementService';
 
 const MyCart = () => {
@@ -246,12 +247,10 @@ const MyCart = () => {
         navigate(`/cartDetails/${newCart.cartId}`);
       }, 1000);
     } catch (error) {
-      console.error('Error creating cart:', error);
-      if (error.response?.data?.errorMessage) {
-        toast.error(error.response.data.errorMessage);
-      } else {
-        toast.error('Failed to create cart');
-      }
+      // After apiClient.formatError: error.data contains response data, error.message contains the message
+      const errorMessage = error?.data?.errorMessage || error?.message || 'Failed to create cart';
+      console.error('Error creating cart:', errorMessage);
+      // Note: apiClient already shows toast for 400/500 errors
     }
   };
 
@@ -507,9 +506,9 @@ const MyCart = () => {
 
                     <TableHeaderColumn
                       dataField="cartAmount"
-                      dataFormat={(cell) => {
+                      dataFormat={(cell, row) => {
                         const amount = cell || 0;
-                        return <span style={{ fontWeight: '500' }}>${amount.toFixed(2)}</span>;
+                        return <span style={{ fontWeight: '500' }}>{formatCurrency(amount, getCompanyCurrency())}</span>;
                       }}
                       dataAlign="right"
                       headerAlign="right"

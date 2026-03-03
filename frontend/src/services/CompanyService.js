@@ -71,6 +71,33 @@ const CompanyService = {
       params: { pageNumber, pageSize },
     });
   },
+
+  // Get company by ID (direct endpoint)
+  getCompanyById(companyId) {
+    return apiClient.get(`ep/v1/company/${companyId}`);
+  },
+
+  // Admin: Get company metrics (carts, orders, rfqs, users counts)
+  getCompanyMetrics(companyId) {
+    return apiClient.get(`ep/v1/admin/company/${companyId}/metrics`);
+  },
+
+  // Get company users count
+  getCompanyUsersCount(companyId) {
+    return apiClient.get(`ep/v1/company/${companyId}/users/count`);
+  },
+
+  // Get recent company activity
+  getCompanyActivity(companyId, limit = 10) {
+    return apiClient.get(`ep/v1/admin/company/${companyId}/activity?limit=${limit}`);
+  },
+
+  // Get company currency
+  getCompanyCurrency(companyId) {
+    return apiClient.get(`ep/v1/company/${companyId}`).then((res) => {
+      return res.data?.currency || 'INR';
+    });
+  },
 };
 
 export default CompanyService;

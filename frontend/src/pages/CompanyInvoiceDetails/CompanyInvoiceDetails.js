@@ -21,7 +21,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 import InvoiceService from '../../services/InvoiceService';
 import FileUploadService from '../../services/FileUploadService';
 import VoucherService from '../../services/VoucherService';
-import { formatDate, getEntityId, getUserRole } from '../localStorageUtil';
+import { formatDate, getEntityId, getUserRole, formatCurrency, getCurrencySymbol, getCompanyCurrency } from '../localStorageUtil';
+import { formatDualCurrency, getExchangeRate, getUserType } from '../../utils/currencyUtils';
 import '../CompanyManagement/ReactBootstrapTable.scss';
 
 const CompanyInvoiceDetails = () => {
@@ -29,10 +30,13 @@ const CompanyInvoiceDetails = () => {
   const navigate = useNavigate();
   const companyId = getEntityId();
   const role = getUserRole();
+  const companyCurrency = getCompanyCurrency();
+  const userType = getUserType();
 
   const [invoice, setInvoice] = useState(null);
   const [supplier, setSupplier] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [exchangeRate, setExchangeRate] = useState(1);
   const [approveModalOpen, setApproveModalOpen] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
   const [approvalNotes, setApprovalNotes] = useState('');
@@ -106,6 +110,66 @@ const CompanyInvoiceDetails = () => {
       }
     };
   }, [invoiceId, companyId]);
+
+  // Fetch exchange rate when supplier currency is available
+  useEffect(() => {
+    const fetchRate = async () => {
+      const supplierCurrency = supplier?.currency;
+      if (supplierCurrency && supplierCurrency !== companyCurrency) {
+        try {
+          const rate = await getExchangeRate(supplierCurrency, companyCurrency);
+          setExchangeRate(rate);
+        } catch (error) {
+          console.error('Error fetching exchange rate:', error);
+          setExchangeRate(1);
+        }
+      } else {
+        setExchangeRate(1);
+      }
+    };
+    if (supplier) {
+      fetchRate();
+    }
+  }, [supplier, companyCurrency]);
+
+  // Get supplier currency (fallback to company currency)
+  const getSupplierCurrency = () => supplier?.currency || companyCurrency;
+
+  // Format amount for inline display (used in totals section)
+  const formatInvoiceAmount = (amount) => {
+    const supplierCurrency = getSupplierCurrency();
+    if (supplierCurrency === companyCurrency || !amount) {
+      return formatCurrency(amount, companyCurrency);
+    }
+    const convertedAmount = amount * exchangeRate;
+    return formatDualCurrency({
+      originalPrice: amount,
+      originalCurrency: supplierCurrency,
+      convertedPrice: convertedAmount,
+      convertedCurrency: companyCurrency,
+    }, userType);
+  };
+
+  // Format amount for stacked display (used in narrow table columns)
+  const formatInvoiceAmountStacked = (amount) => {
+    const supplierCurrency = getSupplierCurrency();
+    if (supplierCurrency === companyCurrency || !amount) {
+      return formatCurrency(amount, supplierCurrency);
+    }
+    const convertedAmount = amount * exchangeRate;
+    const primary = userType === 'company'
+      ? formatCurrency(convertedAmount, companyCurrency)
+      : formatCurrency(amount, supplierCurrency);
+    const secondary = userType === 'company'
+      ? formatCurrency(amount, supplierCurrency)
+      : formatCurrency(convertedAmount, companyCurrency);
+    return (
+      <div style={{ lineHeight: '1.2' }}>
+        <div>{primary}</div>
+        <div style={{ fontSize: '0.75rem', color: '#6c757d' }}>({secondary})</div>
+      </div>
+    );
+  };
 
   const fetchGrnsForPO = async () => {
     if (!invoice?.purchaseOrderId) return;
@@ -826,8 +890,8 @@ const CompanyInvoiceDetails = () => {
                                           <td style={{ padding: '6px 8px', color: '#495057' }}>{grnDetail.unitOfMeasurement || '-'}</td>
                                           <td className="text-center" style={{ padding: '6px 8px', color: '#495057' }}>{grnDetail.qtyReceived || '0'}</td>
                                           <td className="text-center" style={{ padding: '6px 8px', color: '#495057' }}>{grnDetail.qtyAccepted || '0'}</td>
-                                          <td style={{ padding: '6px 8px', color: '#495057' }}>${parseFloat(grnDetail.unitPrice || 0).toFixed(2)}</td>
-                                          <td className="fw-bold" style={{ padding: '6px 8px', color: '#212529' }}>${((grnDetail.qtyAccepted || 0) * (grnDetail.unitPrice || 0)).toFixed(2)}</td>
+                                          <td style={{ padding: '6px 8px', color: '#495057', whiteSpace: 'nowrap' }}>{formatInvoiceAmountStacked(parseFloat(grnDetail.unitPrice || 0))}</td>
+                                          <td className="fw-bold" style={{ padding: '6px 8px', color: '#212529', whiteSpace: 'nowrap' }}>{formatInvoiceAmountStacked((grnDetail.qtyAccepted || 0) * (grnDetail.unitPrice || 0))}</td>
                                         </tr>
                                       ))}
                                     </tbody>
@@ -937,8 +1001,8 @@ const CompanyInvoiceDetails = () => {
                                             <td style={{ padding: '6px 8px', color: '#495057' }}>{grnDetail.unitOfMeasurement || '-'}</td>
                                             <td className="text-center" style={{ padding: '6px 8px', color: '#495057' }}>{grnDetail.qtyReceived || '0'}</td>
                                             <td className="text-center" style={{ padding: '6px 8px', color: '#495057' }}>{grnDetail.qtyAccepted || '0'}</td>
-                                            <td style={{ padding: '6px 8px', color: '#495057' }}>${parseFloat(grnDetail.unitPrice || 0).toFixed(2)}</td>
-                                            <td className="fw-bold" style={{ padding: '6px 8px', color: '#212529' }}>${((grnDetail.qtyAccepted || 0) * (grnDetail.unitPrice || 0)).toFixed(2)}</td>
+                                            <td style={{ padding: '6px 8px', color: '#495057', whiteSpace: 'nowrap' }}>{formatInvoiceAmountStacked(parseFloat(grnDetail.unitPrice || 0))}</td>
+                                            <td className="fw-bold" style={{ padding: '6px 8px', color: '#212529', whiteSpace: 'nowrap' }}>{formatInvoiceAmountStacked((grnDetail.qtyAccepted || 0) * (grnDetail.unitPrice || 0))}</td>
                                           </tr>
                                         ))}
                                       </tbody>
@@ -992,8 +1056,8 @@ const CompanyInvoiceDetails = () => {
                           <tbody>
                             <tr>
                               <td style={{ padding: '8px 0', color: '#6c757d' }}>Sub Total:</td>
-                              <td style={{ padding: '8px 0', textAlign: 'right', fontWeight: '600' }}>
-                                ${calculatedSubtotal.toFixed(2)}
+                              <td style={{ padding: '8px 0', textAlign: 'right', fontWeight: '600', whiteSpace: 'nowrap' }}>
+                                {formatInvoiceAmount(calculatedSubtotal)}
                               </td>
                             </tr>
                             <tr>
@@ -1002,7 +1066,7 @@ const CompanyInvoiceDetails = () => {
                               </td>
                               <td style={{ padding: '8px 0', textAlign: 'right' }}>
                                 <div className="d-flex align-items-center justify-content-end gap-2">
-                                  <span>$</span>
+                                  <span>{getCurrencySymbol(getSupplierCurrency())}</span>
                                   <Input
                                     type="number"
                                     value={taxAmount}
@@ -1027,7 +1091,7 @@ const CompanyInvoiceDetails = () => {
                               </td>
                               <td style={{ padding: '8px 0', textAlign: 'right' }}>
                                 <div className="d-flex align-items-center justify-content-end gap-2">
-                                  <span>$</span>
+                                  <span>{getCurrencySymbol(getSupplierCurrency())}</span>
                                   <Input
                                     type="number"
                                     value={freightCharges}
@@ -1057,9 +1121,10 @@ const CompanyInvoiceDetails = () => {
                                   fontWeight: '700',
                                   fontSize: '1.1rem',
                                   color: '#009efb',
+                                  whiteSpace: 'nowrap',
                                 }}
                               >
-                                ${calculatedTotal.toFixed(2)}
+                                {formatInvoiceAmount(calculatedTotal)}
                               </td>
                             </tr>
                           </tbody>
@@ -1092,9 +1157,10 @@ const CompanyInvoiceDetails = () => {
                                 color: '#212529',
                                 fontWeight: 'bold',
                                 textAlign: 'right',
+                                whiteSpace: 'nowrap',
                               }}
                             >
-                              ${parseFloat(invoice.subtotal || 0).toFixed(2)}
+                              {formatInvoiceAmount(parseFloat(invoice.subtotal || 0))}
                             </td>
                           </tr>
                           <tr>
@@ -1117,9 +1183,10 @@ const CompanyInvoiceDetails = () => {
                                 color: '#212529',
                                 fontWeight: 'bold',
                                 textAlign: 'right',
+                                whiteSpace: 'nowrap',
                               }}
                             >
-                              ${parseFloat(invoice.taxes || 0).toFixed(2)}
+                              {formatInvoiceAmount(parseFloat(invoice.taxes || 0))}
                             </td>
                           </tr>
                           <tr>
@@ -1142,9 +1209,10 @@ const CompanyInvoiceDetails = () => {
                                 color: '#212529',
                                 fontWeight: 'bold',
                                 textAlign: 'right',
+                                whiteSpace: 'nowrap',
                               }}
                             >
-                              ${parseFloat(invoice.freight || 0).toFixed(2)}
+                              {formatInvoiceAmount(parseFloat(invoice.freight || 0))}
                             </td>
                           </tr>
                           <tr style={{ borderTop: '1px solid #dee2e6' }}>
@@ -1168,9 +1236,10 @@ const CompanyInvoiceDetails = () => {
                                 color: '#009efb',
                                 fontWeight: 'bold',
                                 textAlign: 'right',
+                                whiteSpace: 'nowrap',
                               }}
                             >
-                              ${parseFloat(invoice.totalAmountDue || 0).toFixed(2)}
+                              {formatInvoiceAmount(parseFloat(invoice.totalAmountDue || 0))}
                             </td>
                           </tr>
                         </tbody>
@@ -1354,26 +1423,26 @@ const CompanyInvoiceDetails = () => {
               <tbody>
                 <tr>
                   <td style={{ padding: '4px 0', color: '#495057' }}>Sub Total:</td>
-                  <td style={{ padding: '4px 0', textAlign: 'right', fontWeight: '600' }}>
-                    ${calculatedSubtotal.toFixed(2)}
+                  <td style={{ padding: '4px 0', textAlign: 'right', fontWeight: '600', whiteSpace: 'nowrap' }}>
+                    {formatInvoiceAmount(calculatedSubtotal)}
                   </td>
                 </tr>
                 <tr>
                   <td style={{ padding: '4px 0', color: '#495057' }}>Tax Total:</td>
-                  <td style={{ padding: '4px 0', textAlign: 'right', fontWeight: '600' }}>
-                    ${parseFloat(taxAmount || 0).toFixed(2)}
+                  <td style={{ padding: '4px 0', textAlign: 'right', fontWeight: '600', whiteSpace: 'nowrap' }}>
+                    {formatInvoiceAmount(parseFloat(taxAmount || 0))}
                   </td>
                 </tr>
                 <tr>
                   <td style={{ padding: '4px 0', color: '#495057' }}>Freight Charges:</td>
-                  <td style={{ padding: '4px 0', textAlign: 'right', fontWeight: '600' }}>
-                    ${parseFloat(freightCharges || 0).toFixed(2)}
+                  <td style={{ padding: '4px 0', textAlign: 'right', fontWeight: '600', whiteSpace: 'nowrap' }}>
+                    {formatInvoiceAmount(parseFloat(freightCharges || 0))}
                   </td>
                 </tr>
                 <tr style={{ borderTop: '1px solid #c8e6c9' }}>
                   <td style={{ padding: '8px 0 0 0', fontWeight: '700', color: '#2e7d32' }}>Invoice Total:</td>
-                  <td style={{ padding: '8px 0 0 0', textAlign: 'right', fontWeight: '700', color: '#2e7d32', fontSize: '1.1rem' }}>
-                    ${calculatedTotal.toFixed(2)}
+                  <td style={{ padding: '8px 0 0 0', textAlign: 'right', fontWeight: '700', color: '#2e7d32', fontSize: '1.1rem', whiteSpace: 'nowrap' }}>
+                    {formatInvoiceAmount(calculatedTotal)}
                   </td>
                 </tr>
               </tbody>
@@ -1468,7 +1537,7 @@ const CompanyInvoiceDetails = () => {
             <strong>Invoice Details:</strong>
             <div className="mt-2">
               <small className="text-muted">Invoice No:</small> <strong>{invoice.invoiceNo}</strong><br/>
-              <small className="text-muted">Amount:</small> <strong>${parseFloat(invoice.totalAmountDue || 0).toFixed(2)}</strong>
+              <small className="text-muted">Amount:</small> <strong>{formatInvoiceAmount(invoice.totalAmountDue || 0)}</strong>
             </div>
           </div>
           <p className="mt-3 mb-0 text-muted small">

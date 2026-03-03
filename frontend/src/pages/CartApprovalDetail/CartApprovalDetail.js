@@ -12,7 +12,14 @@ import {
   parseQueries,
   formatDate,
   getExtensionFromContentType,
+  formatCurrency,
+  getCompanyCurrency,
 } from '../localStorageUtil';
+import {
+  formatDualCurrency,
+  formatDualCurrencyTotal,
+  getUserType,
+} from '../../utils/currencyUtils';
 import CartService from '../../services/CartService';
 import ProjectService from '../../services/ProjectService';
 import LocationService from '../../services/LocationService';
@@ -692,10 +699,7 @@ const CartApprovalDetail = () => {
           </span>
           <span className="fw-bold" style={{ color: '#009efb', fontSize: '16px' }}>
             <i className="bi bi-calculator me-1"></i>
-            Total: $
-            {cartDetails
-              .reduce((sum, item) => sum + item.qty * item.price, 0)
-              .toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            Total: {formatDualCurrencyTotal(cartDetails, getUserType())}
           </span>
         </div>
         <div className="d-flex align-items-center gap-2">
@@ -1221,7 +1225,8 @@ const CartApprovalDetail = () => {
             }, {}),
           ).map(([supplierId, items]) => {
             const supplierName = suppliers[supplierId] || 'Unknown Supplier';
-            const orderValue = items.reduce((sum, item) => sum + item.qty * item.price, 0);
+            // Use converted price (company currency) for display since we show in company currency
+            const orderValue = items.reduce((sum, item) => sum + item.qty * (item.convertedPrice ?? item.price), 0);
             const lineItemCount = items.length;
 
             return (
@@ -1258,11 +1263,7 @@ const CartApprovalDetail = () => {
                           Value:
                         </span>
                         <span className="fw-bold" style={{ color: '#198754', fontSize: '14px' }}>
-                          $
-                          {orderValue.toLocaleString('en-US', {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
+                          {formatCurrency(orderValue, getCompanyCurrency())}
                         </span>
                       </div>
                     </div>
@@ -1359,11 +1360,15 @@ const CartApprovalDetail = () => {
                                   <span
                                     style={{ fontSize: '13px', fontWeight: '500', color: '#000' }}
                                   >
-                                    $
-                                    {item.price.toLocaleString('en-US', {
-                                      minimumFractionDigits: 2,
-                                      maximumFractionDigits: 2,
-                                    })}
+                                    {formatDualCurrency(
+                                      {
+                                        originalPrice: item.originalPrice || item.price,
+                                        originalCurrency: item.originalCurrencyCode || getCompanyCurrency(),
+                                        convertedPrice: item.convertedPrice,
+                                        convertedCurrency: item.convertedCurrencyCode,
+                                      },
+                                      getUserType()
+                                    )}
                                   </span>
                                 </div>
                                 <div className="d-flex align-items-center">
@@ -1376,11 +1381,15 @@ const CartApprovalDetail = () => {
                                   <span
                                     style={{ fontSize: '14px', fontWeight: '600', color: '#000' }}
                                   >
-                                    $
-                                    {(item.qty * item.price).toLocaleString('en-US', {
-                                      minimumFractionDigits: 2,
-                                      maximumFractionDigits: 2,
-                                    })}
+                                    {formatDualCurrency(
+                                      {
+                                        originalPrice: (item.originalPrice || item.price) * item.qty,
+                                        originalCurrency: item.originalCurrencyCode || getCompanyCurrency(),
+                                        convertedPrice: item.convertedPrice ? item.convertedPrice * item.qty : null,
+                                        convertedCurrency: item.convertedCurrencyCode,
+                                      },
+                                      getUserType()
+                                    )}
                                   </span>
                                 </div>
                               </div>
@@ -1950,7 +1959,7 @@ const CartApprovalDetail = () => {
                           <td
                             style={{ padding: '8px', verticalAlign: 'middle', fontWeight: '500' }}
                           >
-                            ${(po.orderAmount || po.totalAmount || 0).toLocaleString()}
+                            {formatCurrency(po.orderAmount || po.totalAmount || 0, getCompanyCurrency())}
                           </td>
                           <td style={{ padding: '8px', verticalAlign: 'middle' }}>
                             {po.deliveryDate ? new Date(po.deliveryDate).toLocaleDateString() : '-'}

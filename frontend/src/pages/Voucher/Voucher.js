@@ -8,7 +8,8 @@ import { FaSort } from 'react-icons/fa';
 import { useNavigate } from 'react-router-dom';
 import Swal from 'sweetalert2';
 import '../CompanyManagement/ReactBootstrapTable.scss';
-import { formatDate, getEntityId } from '../localStorageUtil';
+import { formatDate, getEntityId, getCompanyCurrency } from '../localStorageUtil';
+import { formatCurrency, formatDualCurrency, getExchangeRate, getUserType } from '../../utils/currencyUtils';
 import SupplierService from '../../services/SupplierService';
 import VoucherService from '../../services/VoucherService';
 import useTooltipManager from '../../utils/useTooltipManager';
@@ -16,8 +17,11 @@ import { getBadgeColor, getStatusLabel } from '../../constant/VoucherConstant';
 
 const Voucher = () => {
   const companyId = getEntityId();
+  const companyCurrency = getCompanyCurrency();
+  const userType = getUserType();
   const [voucherData, setVoucherData] = useState([]);
   const [supplierCache, setSupplierCache] = useState(new Map());
+  const [exchangeRates, setExchangeRates] = useState({});
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const navigate = useNavigate();
@@ -122,6 +126,52 @@ const Voucher = () => {
     }, 1500);
     return () => clearTimeout(timer);
   }, [searchTerm]);
+
+  // Fetch exchange rates for supplier currencies
+  useEffect(() => {
+    const fetchRates = async () => {
+      const supplierCurrencies = new Set();
+      voucherData.forEach((v) => {
+        const currency = v.supplier?.currency || supplierCache.get(v.supplierId)?.currency;
+        if (currency && currency !== companyCurrency) {
+          supplierCurrencies.add(currency);
+        }
+      });
+
+      const newRates = { ...exchangeRates };
+      for (const currency of supplierCurrencies) {
+        if (!newRates[currency]) {
+          try {
+            const rate = await getExchangeRate(currency, companyCurrency);
+            newRates[currency] = rate;
+          } catch (error) {
+            console.error(`Error fetching rate for ${currency}:`, error);
+            newRates[currency] = 1;
+          }
+        }
+      }
+      setExchangeRates(newRates);
+    };
+    if (voucherData.length > 0) {
+      fetchRates();
+    }
+  }, [voucherData, supplierCache, companyCurrency]);
+
+  // Format amount with dual currency display
+  const formatVoucherAmount = (amount, supplierCurrency) => {
+    if (!supplierCurrency || supplierCurrency === companyCurrency || !amount) {
+      return formatCurrency(amount, companyCurrency);
+    }
+    const rate = exchangeRates[supplierCurrency] || 1;
+    const convertedAmount = amount * rate;
+    return formatDualCurrency({
+      originalPrice: amount,
+      originalCurrency: supplierCurrency,
+      convertedPrice: convertedAmount,
+      convertedCurrency: companyCurrency,
+    }, userType);
+  };
+
   const handleRowClick = (row) => {
     navigate(`/voucher-detail/${row.voucherHeadId}`, {
       state: { companyId },
@@ -443,8 +493,9 @@ const Voucher = () => {
                       dataField="finalAmount"
                       dataAlign="right"
                       headerAlign="right"
-                      dataFormat={(cell) => {
-                        return cell ? `₹${parseFloat(cell).toFixed(2)}` : '₹0.00';
+                      dataFormat={(cell, row) => {
+                        const supplierCurrency = row.supplier?.currency || supplierCache.get(row.supplierId)?.currency;
+                        return formatVoucherAmount(parseFloat(cell || 0), supplierCurrency);
                       }}
                       width="11%"
                       thStyle={{

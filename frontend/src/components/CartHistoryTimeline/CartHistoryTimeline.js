@@ -20,6 +20,8 @@ import {
   FaBox,
 } from 'react-icons/fa';
 import CartService from '../../services/CartService';
+import { formatCurrency, getCompanyCurrency } from '../../pages/localStorageUtil';
+import { formatDualCurrency, getUserType } from '../../utils/currencyUtils';
 import '../HistoryTimeline/HistoryTimeline.scss';
 
 const EVENT_CONFIG = {
@@ -36,7 +38,37 @@ const EVENT_CONFIG = {
   REASSIGNED: { icon: FaExchangeAlt, color: '#6f42c1', bgColor: '#e2d9f3', label: 'Reassigned', cardClass: 'event-reassign' },
 };
 
-const CartHistoryTimeline = ({ isOpen, toggle, cartId, companyId }) => {
+const CartHistoryTimeline = ({ isOpen, toggle, cartId, companyId, companyCurrency }) => {
+  // Get company currency from props or localStorage (for cart, amounts are in company currency)
+  const effectiveCompanyCurrency = companyCurrency || getCompanyCurrency() || 'INR';
+  const userType = getUserType();
+
+  // Helper to format line item amount with dual currency display
+  const formatLineItemAmount = (amount, audit) => {
+    const originalCurrency = audit.originalCurrencyCode || audit.currencyCode;
+    const convertedCurrency = audit.convertedCurrencyCode || effectiveCompanyCurrency;
+    const conversionRate = audit.conversionRate;
+
+    // If no original currency info, just use company currency
+    if (!originalCurrency) {
+      return formatCurrency(amount, effectiveCompanyCurrency);
+    }
+
+    // If same currency or no conversion needed, single format
+    if (originalCurrency === convertedCurrency || !conversionRate || conversionRate === 1) {
+      return formatCurrency(amount, originalCurrency);
+    }
+
+    // Dual currency display - amount is in original (supplier) currency
+    const convertedAmount = amount * conversionRate;
+    return formatDualCurrency({
+      originalPrice: amount,
+      originalCurrency: originalCurrency,
+      convertedPrice: convertedAmount,
+      convertedCurrency: convertedCurrency,
+    }, userType);
+  };
+
   const [audits, setAudits] = useState([]);
   const [loading, setLoading] = useState(false);
   const [expandedItems, setExpandedItems] = useState(new Set());
@@ -86,10 +118,6 @@ const CartHistoryTimeline = ({ isOpen, toggle, cartId, companyId }) => {
     });
   };
 
-  const formatCurrency = (amount) => {
-    if (amount == null || Number.isNaN(Number(amount))) return '$0.00';
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(amount));
-  };
 
   const toggleExpand = (index) => {
     setExpandedItems((prev) => {
@@ -135,7 +163,7 @@ const CartHistoryTimeline = ({ isOpen, toggle, cartId, companyId }) => {
               <div className="detail-row">
                 <span className="detail-label">Amount:</span>
                 <span className="detail-value">
-                  <span className="new-value">{formatCurrency(audit.newTotalAmount)}</span>
+                  <span className="new-value">{formatCurrency(audit.newTotalAmount, effectiveCompanyCurrency)}</span>
                 </span>
               </div>
             )}
@@ -159,9 +187,9 @@ const CartHistoryTimeline = ({ isOpen, toggle, cartId, companyId }) => {
               <div className="detail-row">
                 <span className="detail-label">Amount:</span>
                 <span className="detail-value">
-                  <span className="old-value">{formatCurrency(audit.oldTotalAmount)}</span>
+                  <span className="old-value">{formatCurrency(audit.oldTotalAmount, effectiveCompanyCurrency)}</span>
                   <span className="arrow">→</span>
-                  <span className="new-value">{formatCurrency(audit.newTotalAmount)}</span>
+                  <span className="new-value">{formatCurrency(audit.newTotalAmount, effectiveCompanyCurrency)}</span>
                 </span>
               </div>
             )}
@@ -265,11 +293,11 @@ const CartHistoryTimeline = ({ isOpen, toggle, cartId, companyId }) => {
             </div>
             <div className="detail-row">
               <span className="detail-label">Unit Price:</span>
-              <span className="detail-value"><span className="new-value">{formatCurrency(audit.newUnitPrice)}</span></span>
+              <span className="detail-value"><span className="new-value">{formatLineItemAmount(audit.newUnitPrice, audit)}</span></span>
             </div>
             <div className="detail-row">
               <span className="detail-label">Total:</span>
-              <span className="detail-value"><span className="new-value">{formatCurrency(audit.newLineAmount)}</span></span>
+              <span className="detail-value"><span className="new-value">{formatLineItemAmount(audit.newLineAmount, audit)}</span></span>
             </div>
             {(audit.newProject || audit.newGLAccount) && (
               <div className="dimension-tags">
@@ -297,9 +325,9 @@ const CartHistoryTimeline = ({ isOpen, toggle, cartId, companyId }) => {
               <div className="detail-row">
                 <span className="detail-label">Unit Price:</span>
                 <span className="detail-value">
-                  <span className="old-value">{formatCurrency(audit.oldUnitPrice)}</span>
+                  <span className="old-value">{formatLineItemAmount(audit.oldUnitPrice, audit)}</span>
                   <span className="arrow">→</span>
-                  <span className="new-value">{formatCurrency(audit.newUnitPrice)}</span>
+                  <span className="new-value">{formatLineItemAmount(audit.newUnitPrice, audit)}</span>
                 </span>
               </div>
             )}
@@ -307,9 +335,9 @@ const CartHistoryTimeline = ({ isOpen, toggle, cartId, companyId }) => {
               <div className="detail-row">
                 <span className="detail-label">Total:</span>
                 <span className="detail-value">
-                  <span className="old-value">{formatCurrency(audit.oldLineAmount)}</span>
+                  <span className="old-value">{formatLineItemAmount(audit.oldLineAmount, audit)}</span>
                   <span className="arrow">→</span>
-                  <span className="new-value">{formatCurrency(audit.newLineAmount)}</span>
+                  <span className="new-value">{formatLineItemAmount(audit.newLineAmount, audit)}</span>
                 </span>
               </div>
             )}
@@ -317,6 +345,7 @@ const CartHistoryTimeline = ({ isOpen, toggle, cartId, companyId }) => {
         );
 
       case 'LINE_ITEM_DELETE':
+        const deleteCurrency = audit.originalCurrencyCode || audit.currencyCode || effectiveCompanyCurrency;
         return (
           <div className="event-details">
             <div className="detail-row">
@@ -330,9 +359,9 @@ const CartHistoryTimeline = ({ isOpen, toggle, cartId, companyId }) => {
             <div className="detail-row">
               <span className="detail-label">Amount:</span>
               <span className="detail-value">
-                <span className="old-value">{formatCurrency(audit.oldLineAmount)}</span>
+                <span className="old-value">{formatLineItemAmount(audit.oldLineAmount, audit)}</span>
                 <span className="arrow">→</span>
-                <span className="new-value deleted-value">$0.00</span>
+                <span className="new-value deleted-value">{formatCurrency(0, deleteCurrency)}</span>
               </span>
             </div>
           </div>
@@ -567,6 +596,7 @@ CartHistoryTimeline.propTypes = {
   toggle: PropTypes.func.isRequired,
   cartId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
   companyId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+  companyCurrency: PropTypes.string,
 };
 
 export default CartHistoryTimeline;
