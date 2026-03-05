@@ -8,7 +8,6 @@ import HorizontalHeader from './header/HorizontalHeader';
 import HorizontalSidebar from './sidebars/horizontal/HorizontalSidebar';
 import ChatBot from '../components/ChatBot/ChatBot';
 
-
 const FullLayout = () => {
   const customizerToggle = useSelector((state) => state.customizer.customizerSidebar);
   const toggleMiniSidebar = useSelector((state) => state.customizer.isMiniSidebar);
